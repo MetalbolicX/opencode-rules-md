@@ -10,7 +10,7 @@
     "tui"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "bun run clean && tsc -p tsconfig.build.json && tsup && node scripts/postbuild-rename-solid.mjs dist/tui.js",
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
@@ -61,8 +61,8 @@
       "import": "./dist/src/index.js"
     },
     "./tui": {
-      "types": "./dist/tui/index.d.ts",
-      "import": "./tui/index.tsx"
+      "types": "./dist/tui.d.ts",
+      "import": "./dist/tui.js"
     }
   },
   "peerDependencies": {
@@ -78,9 +78,11 @@
     "@types/node": "^20.19.30",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
+    "esbuild-plugin-solid": "^0.6.0",
     "eslint": "^8.57.1",
     "prettier": "^3.8.1",
     "solid-js": "1.9.11",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^1.6.1"
   },
