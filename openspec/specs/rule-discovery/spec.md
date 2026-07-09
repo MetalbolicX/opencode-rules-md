@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This specification defines how the opencode-rules plugin discovers, loads, and delivers markdown-based rule files to OpenCode sessions. The plugin supports both unconditional and conditional rules (via glob patterns), and delivers them as silent messages to sessions when they are created or compacted.
+This specification defines how the opencode-rules-md plugin discovers, loads, and delivers markdown-based rule files to OpenCode sessions. The plugin supports both unconditional and conditional rules (via glob patterns), and delivers them as silent messages to sessions when they are created or compacted.
 ## Requirements
 ### Requirement: Rule File Formats
 

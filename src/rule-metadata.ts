@@ -135,7 +135,7 @@ export function parseRuleMetadata(content: string): RuleMetadata | undefined {
     // Log warning for YAML parsing errors
     const message = error instanceof Error ? error.message : String(error);
     console.warn(
-      `[opencode-rules] Warning: Failed to parse YAML frontmatter: ${message}`
+      `[opencode-rules-md] Warning: Failed to parse YAML frontmatter: ${message}`
     );
     return undefined;
   }

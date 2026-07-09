@@ -143,7 +143,7 @@ describe('runMain', () => {
     expect(result).toBe(0);
     const configPath = makeConfigPath();
     const written = fs.readFileSync(configPath);
-    expect(written).toContain('opencode-rules');
+    expect(written).toContain('opencode-rules-md');
   });
 
   it('creates config file if install command finds none', async () => {
@@ -160,7 +160,7 @@ describe('runMain', () => {
   it('dispatches status command and returns 0', async () => {
     const fs = new InMemoryCliFs();
     fs.mkdirSync('/home/user/.config/opencode', { recursive: true });
-    fs.writeFileSync(makeConfigPath(), JSON.stringify({ plugin: ['opencode-rules'] }));
+    fs.writeFileSync(makeConfigPath(), JSON.stringify({ plugin: ['opencode-rules-md'] }));
 
     const result = await runMain(['status'], fs);
 
@@ -192,7 +192,7 @@ describe('runMain', () => {
 
     expect(result).toBe(0);
     const configPath = makeConfigPath();
-    expect(fs.readFileSync(configPath)).toContain('opencode-rules@1.2.3');
+    expect(fs.readFileSync(configPath)).toContain('opencode-rules-md@1.2.3');
   });
 
   it('parses --dry-run flag and returns 0 without writing', async () => {
@@ -213,7 +213,7 @@ describe('runMain', () => {
     const result = await runMain(['install', '--yes'], fs);
 
     expect(result).toBe(0);
-    expect(fs.readFileSync(makeConfigPath())).toContain('opencode-rules');
+    expect(fs.readFileSync(makeConfigPath())).toContain('opencode-rules-md');
   });
 
   it('parses -h and returns 0 (help)', async () => {

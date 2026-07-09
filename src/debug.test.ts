@@ -25,7 +25,7 @@ describe('createDebugLog', () => {
     process.env.OPENCODE_RULES_DEBUG = '1';
     const log = createDebugLog();
     log('test message');
-    expect(debugSpy).toHaveBeenCalledWith('[opencode-rules] test message');
+    expect(debugSpy).toHaveBeenCalledWith('[opencode-rules-md] test message');
   });
 
   it('does not log when OPENCODE_RULES_DEBUG is unset', () => {

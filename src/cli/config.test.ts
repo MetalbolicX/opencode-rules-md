@@ -278,62 +278,62 @@ describe('normalizePlugin', () => {
     expect(result).toEqual(['plugin-b', 'plugin-a']);
   });
 
-  it('returns deduplicated list with opencode-rules variants', () => {
+  it('returns deduplicated list with opencode-rules-md variants', () => {
     const result = configModule.normalizePlugin({
       plugin: [
-        'opencode-rules',
-        'opencode-rules@0.1.0',
+        'opencode-rules-md',
+        'opencode-rules-md@0.1.0',
         'plugin-a',
-        'opencode-rules',
+        'opencode-rules-md',
       ],
     });
     // Dedupe by prefix match, keeping the last occurrence
-    expect(result).toEqual(['plugin-a', 'opencode-rules']);
+    expect(result).toEqual(['plugin-a', 'opencode-rules-md']);
   });
 });
 
 describe('addPlugin', () => {
-  it('adds opencode-rules when plugin array is empty', () => {
+  it('adds opencode-rules-md when plugin array is empty', () => {
     const obj = { plugin: [] as string[] };
-    configModule.addPlugin(obj, 'opencode-rules');
-    expect(obj.plugin).toEqual(['opencode-rules']);
+    configModule.addPlugin(obj, 'opencode-rules-md');
+    expect(obj.plugin).toEqual(['opencode-rules-md']);
   });
 
-  it('adds opencode-rules when plugin is missing', () => {
+  it('adds opencode-rules-md when plugin is missing', () => {
     const obj = {};
-    configModule.addPlugin(obj, 'opencode-rules');
-    expect((obj as { plugin?: string[] }).plugin).toEqual(['opencode-rules']);
+    configModule.addPlugin(obj, 'opencode-rules-md');
+    expect((obj as { plugin?: string[] }).plugin).toEqual(['opencode-rules-md']);
   });
 
-  it('does not duplicate existing opencode-rules', () => {
-    const obj = { plugin: ['opencode-rules', 'plugin-a'] };
-    configModule.addPlugin(obj, 'opencode-rules');
-    expect(obj.plugin).toEqual(['plugin-a', 'opencode-rules']);
+  it('does not duplicate existing opencode-rules-md', () => {
+    const obj = { plugin: ['opencode-rules-md', 'plugin-a'] };
+    configModule.addPlugin(obj, 'opencode-rules-md');
+    expect(obj.plugin).toEqual(['plugin-a', 'opencode-rules-md']);
   });
 
-  it('appends opencode-rules at the end', () => {
+  it('appends opencode-rules-md at the end', () => {
     const obj = { plugin: ['plugin-a', 'plugin-b'] };
-    configModule.addPlugin(obj, 'opencode-rules');
-    expect(obj.plugin).toEqual(['plugin-a', 'plugin-b', 'opencode-rules']);
+    configModule.addPlugin(obj, 'opencode-rules-md');
+    expect(obj.plugin).toEqual(['plugin-a', 'plugin-b', 'opencode-rules-md']);
   });
 });
 
 describe('removePlugin', () => {
-  it('removes opencode-rules entries by prefix', () => {
-    const obj = { plugin: ['opencode-rules', 'opencode-rules@0.1.0', 'plugin-a'] };
-    configModule.removePlugin(obj, 'opencode-rules');
+  it('removes opencode-rules-md entries by prefix', () => {
+    const obj = { plugin: ['opencode-rules-md', 'opencode-rules-md@0.1.0', 'plugin-a'] };
+    configModule.removePlugin(obj, 'opencode-rules-md');
     expect(obj.plugin).toEqual(['plugin-a']);
   });
 
   it('leaves plugin unchanged when none match', () => {
     const obj = { plugin: ['plugin-a', 'plugin-b'] };
-    configModule.removePlugin(obj, 'opencode-rules');
+    configModule.removePlugin(obj, 'opencode-rules-md');
     expect(obj.plugin).toEqual(['plugin-a', 'plugin-b']);
   });
 
   it('handles missing plugin key gracefully', () => {
     const obj = {};
-    configModule.removePlugin(obj, 'opencode-rules');
+    configModule.removePlugin(obj, 'opencode-rules-md');
     expect(obj).toEqual({});
   });
 });
@@ -345,7 +345,7 @@ describe('rotateBackups', () => {
   it('writes a .bak file when none exist', () => {
     const configPath = '/cfg/opencode.json';
     memFs.seedFile(configPath, '{}');
-    const result = configModule.rotateBackups(memFs, configPath, 'opencode-rules');
+    const result = configModule.rotateBackups(memFs, configPath, 'opencode-rules-md');
     const files = memFs.listFiles('/cfg/');
     const bakFiles = [...files.keys()].filter(k => k.includes('.bak.'));
     expect(bakFiles).toHaveLength(1);
@@ -359,7 +359,7 @@ describe('rotateBackups', () => {
     memFs.seedFile('/cfg/opencode.json.bak.1', 'v1');
     memFs.seedFile('/cfg/opencode.json.bak.2', 'v2');
     memFs.seedFile('/cfg/opencode.json.bak.3', 'v3');
-    configModule.rotateBackups(memFs, configPath, 'opencode-rules');
+    configModule.rotateBackups(memFs, configPath, 'opencode-rules-md');
     const files = [...memFs.listFiles('/cfg/').keys()];
     const bakFiles = files.filter(k => k.includes('.bak.'));
     expect(bakFiles).toHaveLength(3);
@@ -375,7 +375,7 @@ describe('rotateBackups', () => {
     memFs.seedFile('/cfg/opencode.json.bak.1', 'oldest');
     memFs.seedFile('/cfg/opencode.json.bak.2', 'middle');
     memFs.seedFile('/cfg/opencode.json.bak.3', 'newest');
-    const result = configModule.rotateBackups(memFs, configPath, 'opencode-rules');
+    const result = configModule.rotateBackups(memFs, configPath, 'opencode-rules-md');
     const files = [...memFs.listFiles('/cfg/').keys()];
     // Oldest should be deleted
     expect(files.some(k => k.endsWith('.bak.1'))).toBe(false);

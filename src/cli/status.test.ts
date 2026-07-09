@@ -133,14 +133,14 @@ describe('runStatus', () => {
     restoreEnv(envSnapshot);
   });
 
-  it('reports installed=true with specifier and path when opencode-rules is present', () => {
+  it('reports installed=true with specifier and path when opencode-rules-md is present', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules@0.6.5'] }));
+    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.6.5'] }));
 
     const result = runStatus(fs);
 
     expect(result.installed).toBe(true);
-    expect(result.specifier).toBe('opencode-rules@0.6.5');
+    expect(result.specifier).toBe('opencode-rules-md@0.6.5');
     expect(result.path).toBe(makeConfigPath(fs));
   });
 
@@ -163,7 +163,7 @@ describe('runStatus', () => {
     expect(result.installed).toBe(false);
   });
 
-  it('reports installed=false when opencode-rules is not in plugin list', () => {
+  it('reports installed=false when opencode-rules-md is not in plugin list', () => {
     const fs = new InMemoryCliFs();
     seedConfig(fs, JSON.stringify({ plugin: ['some-other-plugin'] }));
 
@@ -193,7 +193,7 @@ describe('runStatus', () => {
 
   it('returns the bundled version', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules'] }));
+    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
 
     const result = runStatus(fs);
 

@@ -203,7 +203,7 @@ export function SidebarContent(props: SidebarContentProps): JSX.Element {
     } catch (err) {
       // Discard if a newer request started
       if (requestId !== thisRequest) return;
-      console.error('[opencode-rules] Failed to load rules:', err);
+      console.error('[opencode-rules-md] Failed to load rules:', err);
       setStatus('error');
     }
   };
@@ -228,7 +228,7 @@ export function SidebarContent(props: SidebarContentProps): JSX.Element {
     } catch (err) {
       // Discard if a newer request started
       if (requestId !== thisRequest) return;
-      console.error('[opencode-rules] Failed to refresh rules:', err);
+      console.error('[opencode-rules-md] Failed to refresh rules:', err);
     }
   };
 

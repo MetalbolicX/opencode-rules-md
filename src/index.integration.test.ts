@@ -1,5 +1,5 @@
 /**
- * High-level integration tests for opencode-rules.
+ * High-level integration tests for opencode-rules-md.
  * Tests end-to-end rule injection, conditional rules with runtime context,
  * cache behavior, and cross-dimension regression scenarios.
  * Split from index.test.ts for maintainability.

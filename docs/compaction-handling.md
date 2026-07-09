@@ -188,10 +188,10 @@ it('includes "... and X more" when paths exceed 20', async () => {
 When running with `OPENCODE_RULES_DEBUG=1`, you'll see:
 
 ```
-[opencode-rules] Recorded context path from tool read: src/components/Button.tsx
-[opencode-rules] Seeded 5 context path(s) for session ses_abc123
-[opencode-rules] Updated lastUserPrompt for session ses_abc123 (len=42, parts=1)
-[opencode-rules] Added 20 context path(s) to compaction for session ses_abc123
+[opencode-rules-md] Recorded context path from tool read: src/components/Button.tsx
+[opencode-rules-md] Seeded 5 context path(s) for session ses_abc123
+[opencode-rules-md] Updated lastUserPrompt for session ses_abc123 (len=42, parts=1)
+[opencode-rules-md] Added 20 context path(s) to compaction for session ses_abc123
 ```
 
 ## Alternative Approaches Considered

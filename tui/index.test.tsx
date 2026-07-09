@@ -8,8 +8,8 @@ describe('TUI plugin entry point', () => {
     expect(typeof pluginExports).toBe('object');
   });
 
-  it('exports id equal to "opencode-rules"', () => {
-    expect(pluginExports.id).toBe('opencode-rules');
+  it('exports id equal to "opencode-rules-md"', () => {
+    expect(pluginExports.id).toBe('opencode-rules-md');
   });
 
   it('exports tui as a function', () => {

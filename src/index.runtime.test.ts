@@ -193,7 +193,7 @@ describe('OpenCodeRulesPlugin', () => {
 
   it('should export a plugin module with id and server', async () => {
     const { default: pluginModule } = await import('./index.js');
-    expect(pluginModule).toHaveProperty('id', 'opencode-rules');
+    expect(pluginModule).toHaveProperty('id', 'opencode-rules-md');
     expect(typeof pluginModule.server).toBe('function');
   });
 

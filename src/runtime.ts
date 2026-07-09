@@ -296,7 +296,7 @@ export class OpenCodeRulesRuntime {
           ? toolResult.reason.message
           : String(toolResult.reason);
       console.warn(
-        `[opencode-rules] Warning: Failed to query tool IDs: ${message}`
+        `[opencode-rules-md] Warning: Failed to query tool IDs: ${message}`
       );
     }
 
@@ -314,7 +314,7 @@ export class OpenCodeRulesRuntime {
           ? mcpResult.reason.message
           : String(mcpResult.reason);
       console.warn(
-        `[opencode-rules] Warning: Failed to query MCP status: ${message}`
+        `[opencode-rules-md] Warning: Failed to query MCP status: ${message}`
       );
     }
 

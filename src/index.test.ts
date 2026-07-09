@@ -1,5 +1,5 @@
 /**
- * Coordinator test file for opencode-rules.
+ * Coordinator test file for opencode-rules-md.
  *
  * This file was refactored from a large 6000+ line monolithic test suite.
  * Tests are now organized into focused test files:

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-opencode-rules is a plugin for opencode that enables loading rules files from "$XDG*CONFIG_HOME/opencode/rules/*.md" and the project ".opencode/rules/\_.md" by default. This allows for easy rules management without having to add a per-project config setting it up for every project. The main goal is to deliver rules as silent messages (using the `noReply` pattern) to sessions when they are created or compacted, ensuring rules are always present in the AI agent's context.
+opencode-rules-md is a plugin for opencode that enables loading rules files from "$XDG*CONFIG_HOME/opencode/rules/*.md" and the project ".opencode/rules/\_.md" by default. This allows for easy rules management without having to add a per-project config setting it up for every project. The main goal is to deliver rules as silent messages (using the `noReply` pattern) to sessions when they are created or compacted, ensuring rules are always present in the AI agent's context.
 
 ## Tech Stack
 

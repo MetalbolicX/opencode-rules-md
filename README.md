@@ -1,13 +1,13 @@
-# opencode-rules
+# opencode-rules-md
 
-[![npm version](https://img.shields.io/npm/v/opencode-rules)](https://www.npmjs.com/package/opencode-rules)
-[![npm downloads](https://img.shields.io/npm/dm/opencode-rules)](https://www.npmjs.com/package/opencode-rules)
+[![npm version](https://img.shields.io/npm/v/opencode-rules-md)](https://www.npmjs.com/package/opencode-rules-md)
+[![npm downloads](https://img.shields.io/npm/dm/opencode-rules-md)](https://www.npmjs.com/package/opencode-rules-md)
 
 A lightweight OpenCode plugin that discovers and injects markdown rule files into AI agent system prompts, enabling flexible behavior customization without per-project configuration.
 
 ## Overview
 
-opencode-rules automatically loads rule files from standard directories and integrates them into AI agent prompts, allowing you to:
+opencode-rules-md automatically loads rule files from standard directories and integrates them into AI agent prompts, allowing you to:
 
 - Define global coding standards that apply across all projects
 - Create project-specific rules for team collaboration
@@ -20,7 +20,7 @@ guidance on specific actions, etc. Unlike skills, which are called on by the age
 approach.
 
 > [!NOTE]
-> The name `opencode-rules` is to be concise about what this plugin does. It is in no way affiliated with Anomaly Co. or
+> The name `opencode-rules-md` is to be concise about what this plugin does. It is in no way affiliated with Anomaly Co. or
 > the official OpenCode project.
 
 ## Features
@@ -44,7 +44,7 @@ approach.
 ### Installation
 
 ```bash
-opencode plugin opencode-rules@latest --global
+opencode plugin opencode-rules-md@latest --global
 ```
 
 <details>
@@ -55,7 +55,7 @@ Add the plugin to your opencode config:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-rules@latest"]
+  "plugin": ["opencode-rules-md@latest"]
 }
 ```
 
@@ -64,7 +64,7 @@ To enable the TUI sidebar, add the same plugin entry to your TUI config:
 ```json
 // ~/.config/opencode/tui.json
 {
-  "plugin": ["opencode-rules@latest"]
+  "plugin": ["opencode-rules-md@latest"]
 }
 ```
 
@@ -100,7 +100,7 @@ That's it! The rule will now be automatically injected into all AI agent prompts
 4. **Message Flow**: `chat.message` hook updates user prompt as messages arrive
 5. **Initial Seeding**: `experimental.chat.messages.transform` extracts context from message history once
 6. **Rule Filtering**: `experimental.chat.system.transform` evaluates rules based on context and injects into system prompt
-7. **State Persistence**: After filtering, matched rule paths are written to `~/.opencode/state/opencode-rules/{sessionId}.json` for TUI consumption
+7. **State Persistence**: After filtering, matched rule paths are written to `~/.opencode/state/opencode-rules-md/{sessionId}.json` for TUI consumption
 8. **Compaction Persistence**: `experimental.session.compacting` preserves context during session compression
 
 ## Performance
@@ -441,7 +441,7 @@ globs:
 The following shows the key source modules. Additional test files (`*.test.ts`) and type-checking utilities exist but are omitted for brevity.
 
 ```
-opencode-rules/
+opencode-rules-md/
 ├── src/
 │   ├── index.ts              # Main plugin entry point and exports
 │   ├── runtime.ts            # OpenCodeRulesRuntime class (hook orchestration)
@@ -492,7 +492,7 @@ The following highlights the primary runtime modules:
 - **project-fingerprint.ts** - Detects project type from marker files (e.g., `package.json`)
 - **mcp-tools.ts** - Maps connected MCP clients to tool IDs for `tools` condition matching
 - **git-branch.ts** - Resolves current git branch for `branch` condition matching
-- **active-rules-state.ts** - Persists which rules matched per session to `~/.opencode/state/opencode-rules/{sessionId}.json` for TUI consumption (atomic writes, per-session queuing)
+- **active-rules-state.ts** - Persists which rules matched per session to `~/.opencode/state/opencode-rules-md/{sessionId}.json` for TUI consumption (atomic writes, per-session queuing)
 - **utils.ts** - Thin facade re-exporting from decomposed modules
 
 ### TUI Sidebar
@@ -513,7 +513,7 @@ The plugin registers a `sidebar_content` slot in the OpenCode TUI, displaying al
 
 - Active rules are sorted to the top within each section
 - Subscribes to `message.updated` and `session.status` events for real-time refresh (150ms debounce, filtered by session ID)
-- Active state is read from `~/.opencode/state/opencode-rules/{sessionId}.json`, written by the server plugin after each rule evaluation
+- Active state is read from `~/.opencode/state/opencode-rules-md/{sessionId}.json`, written by the server plugin after each rule evaluation
 
 ### Build and Test
 

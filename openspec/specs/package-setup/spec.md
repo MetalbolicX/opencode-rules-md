@@ -19,7 +19,7 @@ The project SHALL be configured as a TypeScript package with proper build toolin
 - **WHEN** a developer runs bun install
 - **THEN** all dependencies SHALL be installed successfully
 - **AND** TypeScript SHALL be configured for the project
-- **AND** the package SHALL be importable as "opencode-rules"
+- **AND** the package SHALL be importable as "opencode-rules-md"
 
 #### Scenario: Build process
 

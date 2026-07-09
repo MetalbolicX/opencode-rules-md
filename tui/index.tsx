@@ -3,7 +3,7 @@
 import type { TuiPlugin } from '@opencode-ai/plugin/tui';
 import { SidebarContent } from './slots/sidebar-content';
 
-const id = 'opencode-rules' as const;
+const id = 'opencode-rules-md' as const;
 
 const tui: TuiPlugin = async api => {
   api.slots.register({

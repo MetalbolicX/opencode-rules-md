@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * CLI entrypoint for opencode-rules installer.
+ * CLI entrypoint for opencode-rules-md installer.
  *
  * Supports:
- *   install   — add opencode-rules to the global opencode config
- *   status    — report whether opencode-rules is installed
+ *   install   — add opencode-rules-md to the global opencode config
+ *   status    — report whether opencode-rules-md is installed
  *
  * Flags:
  *   --version <v>  — specify a plugin version to install
@@ -24,13 +24,13 @@ import { realFs } from './real-fs.js';
 // Help text
 // ---------------------------------------------------------------------------
 
-const HELP_TEXT = `opencode-rules CLI
+const HELP_TEXT = `opencode-rules-md CLI
 
-Usage: opencode-rules <command> [options]
+Usage: opencode-rules-md <command> [options]
 
 Commands:
-  install   Add opencode-rules to the global opencode config
-  status    Report whether opencode-rules is installed
+  install   Add opencode-rules-md to the global opencode config
+  status    Report whether opencode-rules-md is installed
 
 Options:
   --version <v>  Specify a plugin version to install
@@ -40,7 +40,7 @@ Options:
   -h, --help     Show this help text
 `.trim();
 
-const USAGE_ERROR_TEXT = `Error: unknown command. Run 'opencode-rules --help' for usage.
+const USAGE_ERROR_TEXT = `Error: unknown command. Run 'opencode-rules-md --help' for usage.
 `.trim();
 
 // ---------------------------------------------------------------------------
@@ -136,9 +136,9 @@ export async function runMain(argv: string[], fs: CliFs = realFs): Promise<ExitC
         const statusResult = runStatus(fs);
         // Print status to stdout
         if (statusResult.installed) {
-          console.log(`opencode-rules is installed (${statusResult.specifier})`);
+          console.log(`opencode-rules-md is installed (${statusResult.specifier})`);
         } else {
-          console.log('opencode-rules is not installed');
+          console.log('opencode-rules-md is not installed');
         }
         // Exit code 0 regardless of install state (status is read-only)
         return 0;

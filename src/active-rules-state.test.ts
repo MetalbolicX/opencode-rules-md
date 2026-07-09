@@ -50,7 +50,7 @@ describe('active-rules-state', () => {
       _setStateDirForTesting(null);
       const stateDir = resolveStateDir();
       expect(stateDir).toBe(
-        path.join(os.homedir(), '.opencode', 'state', 'opencode-rules')
+        path.join(os.homedir(), '.opencode', 'state', 'opencode-rules-md')
       );
     });
   });

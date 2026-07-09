@@ -94,9 +94,9 @@ const sendRulesMessage = async (sessionID: string) => {
     });
 
     sessionsWithRules.add(sessionID);
-    console.log(`[opencode-rules] Sent rules to session ${sessionID}`);
+    console.log(`[opencode-rules-md] Sent rules to session ${sessionID}`);
   } catch (error) {
-    console.error(`[opencode-rules] Failed to send rules:`, error);
+    console.error(`[opencode-rules-md] Failed to send rules:`, error);
   }
 };
 ```

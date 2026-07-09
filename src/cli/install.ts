@@ -1,5 +1,5 @@
 /**
- * install command: idempotently append opencode-rules to the global config.
+ * install command: idempotently append opencode-rules-md to the global config.
  *
  * Pipeline:
  *   loadGlobalConfig → abort if parseError → dedupe → append specifier
@@ -59,8 +59,8 @@ export function runInstall(
     return { status: 'noop', path: configPath, specifier };
   }
 
-  // Remove any existing opencode-rules* entries so this specifier is deduplicated
-  removePlugin(config, 'opencode-rules');
+  // Remove any existing opencode-rules-md* entries so this specifier is deduplicated
+  removePlugin(config, 'opencode-rules-md');
 
   // Add the new (or re-added) specifier at the end
   addPlugin(config, specifier);
@@ -73,7 +73,7 @@ export function runInstall(
   }
 
   // Write: rotate backups first, then atomic write
-  const backup = rotateBackups(fs, configPath, 'opencode-rules');
+  const backup = rotateBackups(fs, configPath, 'opencode-rules-md');
   const serialized = JSON.stringify(config, null, 2);
   writeAtomically(fs, configPath, serialized);
 
@@ -90,5 +90,5 @@ export function runInstall(
 // ---------------------------------------------------------------------------
 
 function buildSpecifier(version?: string): string {
-  return version ? `opencode-rules@${version}` : 'opencode-rules';
+  return version ? `opencode-rules-md@${version}` : 'opencode-rules-md';
 }

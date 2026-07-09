@@ -1,5 +1,5 @@
 /**
- * Shared test fixtures, builders, and helpers for opencode-rules tests.
+ * Shared test fixtures, builders, and helpers for opencode-rules-md tests.
  * Extracted to reduce duplication and tighten typing across test files.
  */
 import path from 'path';
@@ -20,7 +20,7 @@ interface TestDirs {
 let currentTestDirs: TestDirs | null = null;
 
 export function setupTestDirs(): TestDirs {
-  const testDir = mkdtempSync(path.join(os.tmpdir(), 'opencode-rules-test-'));
+  const testDir = mkdtempSync(path.join(os.tmpdir(), 'opencode-rules-md-test-'));
   const globalRulesDir = path.join(testDir, '.config', 'opencode', 'rules');
   const projectRulesDir = path.join(testDir, 'project', '.opencode', 'rules');
   mkdirSync(globalRulesDir, { recursive: true });

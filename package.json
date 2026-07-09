@@ -1,12 +1,12 @@
 {
-  "name": "opencode-rules",
+  "name": "opencode-rules-md",
   "version": "0.6.5",
   "description": "OpenCode plugin that discovers and injects markdown rules into system prompts",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "type": "module",
   "bin": {
-    "opencode-rules": "./dist/cli.mjs"
+    "opencode-rules-md": "./dist/cli.mjs"
   },
   "oc-plugin": [
     "server",
@@ -31,14 +31,14 @@
     "system-prompt",
     "typescript"
   ],
-  "author": "Joe Maples <joe@maples.dev>",
+  "author": "MetalbolicX",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/frap129/opencode-rules.git"
+    "url": "git+https://github.com/MetalbolicX/opencode-rules-md.git"
   },
   "bugs": {
-    "url": "https://github.com/frap129/opencode-rules/issues"
+    "url": "https://github.com/MetalbolicX/opencode-rules-md/issues"
   },
   "files": [
     "dist",

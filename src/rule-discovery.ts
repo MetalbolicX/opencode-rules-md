@@ -81,7 +81,7 @@ export async function getCachedRule(
     ruleCache.delete(filePath);
     const message = error instanceof Error ? error.message : String(error);
     console.warn(
-      `[opencode-rules] Warning: Failed to read rule file ${filePath}: ${message}`
+      `[opencode-rules-md] Warning: Failed to read rule file ${filePath}: ${message}`
     );
     return undefined;
   }
@@ -145,7 +145,7 @@ async function scanDirectoryRecursively(
     // Log non-ENOENT directory read errors
     const message = error instanceof Error ? error.message : String(error);
     console.warn(
-      `[opencode-rules] Warning: Failed to read directory ${dir}: ${message}`
+      `[opencode-rules-md] Warning: Failed to read directory ${dir}: ${message}`
     );
   }
 

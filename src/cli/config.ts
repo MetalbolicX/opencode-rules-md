@@ -178,7 +178,7 @@ export function loadGlobalConfig(fs: CliFs): LoadResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Return the plugin array with opencode-rules* entries deduplicated by
+ * Return the plugin array with opencode-rules-md* entries deduplicated by
  * name prefix, keeping the last occurrence of each unique prefix.
  */
 export function normalizePlugin(
@@ -292,7 +292,7 @@ export function writeAtomically(fs: CliFs, configPath: string, content: string):
 
 /**
  * Extract the name part of a plugin specifier, stripping any version suffix.
- * e.g. "opencode-rules@0.1.0" → "opencode-rules"
+ * e.g. "opencode-rules-md@0.1.0" → "opencode-rules-md"
  */
 function getPluginPrefix(specifier: string): string {
   const atIdx = specifier.indexOf('@');

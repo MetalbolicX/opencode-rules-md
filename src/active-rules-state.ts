@@ -34,7 +34,7 @@ export function resolveStateDir(): string {
   if (stateDirOverride !== null) {
     return stateDirOverride;
   }
-  return path.join(os.homedir(), '.opencode', 'state', 'opencode-rules');
+  return path.join(os.homedir(), '.opencode', 'state', 'opencode-rules-md');
 }
 
 export function getStateFilePath(sessionId: string): string {

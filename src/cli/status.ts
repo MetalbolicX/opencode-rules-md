@@ -3,7 +3,7 @@
  *
  * Reports:
  *   - installed: yes/no
- *   - specifier: the registered opencode-rules entry (or undefined)
+ *   - specifier: the registered opencode-rules-md entry (or undefined)
  *   - path: config file path
  *   - version: bundled CLI version from package.json
  */
@@ -47,8 +47,8 @@ export function runStatus(fs: CliFs = realFs): StatusResult {
   const config = loadResult.config;
   const pluginList: string[] = Array.isArray(config['plugin']) ? (config['plugin'] as string[]) : [];
 
-  // Find the opencode-rules entry (exact match for idempotency)
-  const specifier = pluginList.find(p => p.startsWith('opencode-rules'));
+  // Find the opencode-rules-md entry (exact match for idempotency)
+  const specifier = pluginList.find(p => p.startsWith('opencode-rules-md'));
 
   const result: StatusResult = {
     installed: specifier !== undefined,

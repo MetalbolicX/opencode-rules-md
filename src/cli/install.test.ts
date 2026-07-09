@@ -136,19 +136,19 @@ describe('runInstall', () => {
     restoreEnv(envSnapshot);
   });
 
-  it('writes opencode-rules to a fresh config', () => {
+  it('writes opencode-rules-md to a fresh config', () => {
     const fs = new InMemoryCliFs();
     seedConfig(fs, '{}');
 
     const result = runInstall({}, fs);
 
     expect(result.status).toBe('wrote');
-    expect(result.specifier).toBe('opencode-rules');
+    expect(result.specifier).toBe('opencode-rules-md');
     const configPath = makeConfigPath(fs);
     expect(result.path).toBe(configPath);
     const written = fs.readFileSync(configPath);
     expect(written).toContain('"plugin"');
-    expect(written).toContain('opencode-rules');
+    expect(written).toContain('opencode-rules-md');
   });
 
   it('creates config file if it does not exist', () => {
@@ -164,7 +164,7 @@ describe('runInstall', () => {
 
   it('returns noop when already installed with same specifier', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules'] }));
+    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
 
     const result = runInstall({}, fs);
 
@@ -172,21 +172,21 @@ describe('runInstall', () => {
     const configPath = makeConfigPath(fs);
     const written = fs.readFileSync(configPath);
     // Should not have duplicate
-    const matches = written.match(/"opencode-rules"/g);
+    const matches = written.match(/"opencode-rules-md"/g);
     expect(matches?.length).toBe(1);
   });
 
-  it('replaces existing opencode-rules with new version when version differs', () => {
+  it('replaces existing opencode-rules-md with new version when version differs', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules@0.1.0'] }));
+    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.1.0'] }));
 
     const result = runInstall({ version: '0.2.0' }, fs);
 
     expect(result.status).toBe('wrote');
     const configPath = makeConfigPath(fs);
     const written = fs.readFileSync(configPath);
-    expect(written).toContain('opencode-rules@0.2.0');
-    expect(written).not.toContain('opencode-rules@0.1.0');
+    expect(written).toContain('opencode-rules-md@0.2.0');
+    expect(written).not.toContain('opencode-rules-md@0.1.0');
   });
 
   it('dry-run returns planned without writing', () => {
@@ -227,9 +227,9 @@ describe('runInstall', () => {
     expect(fs.readFileSync(result.backup!)).toContain('other-plugin');
   });
 
-  it('removes existing opencode-rules entries before adding', () => {
+  it('removes existing opencode-rules-md entries before adding', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules@0.1.0', 'some-other-plugin'] }));
+    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.1.0', 'some-other-plugin'] }));
 
     const result = runInstall({ version: '0.2.0' }, fs);
 
@@ -237,8 +237,8 @@ describe('runInstall', () => {
     const configPath = makeConfigPath(fs);
     const written = fs.readFileSync(configPath);
     expect(written).toContain('some-other-plugin');
-    expect(written).toContain('opencode-rules@0.2.0');
-    expect(written).not.toContain('opencode-rules@0.1.0');
+    expect(written).toContain('opencode-rules-md@0.2.0');
+    expect(written).not.toContain('opencode-rules-md@0.1.0');
   });
 
   it('appends specifier with version when version option is provided', () => {
@@ -248,9 +248,9 @@ describe('runInstall', () => {
     const result = runInstall({ version: '1.2.3' }, fs);
 
     expect(result.status).toBe('wrote');
-    expect(result.specifier).toBe('opencode-rules@1.2.3');
+    expect(result.specifier).toBe('opencode-rules-md@1.2.3');
     const configPath = makeConfigPath(fs);
-    expect(fs.readFileSync(configPath)).toContain('opencode-rules@1.2.3');
+    expect(fs.readFileSync(configPath)).toContain('opencode-rules-md@1.2.3');
   });
 
   it('rotates backups, keeping at most 3', () => {

@@ -1258,7 +1258,7 @@ describe('discoverRuleFiles', () => {
       try {
         const files = await discoverRuleFiles();
         expect(files).toEqual([]);
-        expect(warnings.filter(w => w.includes('opencode-rules'))).toHaveLength(
+        expect(warnings.filter(w => w.includes('opencode-rules-md'))).toHaveLength(
           0
         );
       } finally {
@@ -1278,7 +1278,7 @@ describe('discoverRuleFiles', () => {
       try {
         const files = await discoverRuleFiles();
         expect(files).toEqual([]);
-        expect(warnings.filter(w => w.includes('opencode-rules'))).toHaveLength(
+        expect(warnings.filter(w => w.includes('opencode-rules-md'))).toHaveLength(
           0
         );
       } finally {
