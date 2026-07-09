@@ -5,12 +5,16 @@
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "type": "module",
+  "bin": {
+    "opencode-rules": "./dist/cli.mjs"
+  },
   "oc-plugin": [
     "server",
     "tui"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && bun run build:cli",
+    "build:cli": "bun build src/cli/main.ts --outfile dist/cli.mjs --target node",
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
@@ -63,6 +67,10 @@
     "./tui": {
       "types": "./dist/tui/index.d.ts",
       "import": "./tui/index.tsx"
+    },
+    "./cli": {
+      "types": "./dist/cli/main.d.ts",
+      "import": "./dist/cli.mjs"
     }
   },
   "peerDependencies": {
