@@ -72,9 +72,6 @@ declare module '@opencode-ai/plugin/tui' {
     state: TuiState;
     kv: unknown;
     event: TuiEventBus;
-    lifecycle: {
-      onDispose: (cb: () => void) => void;
-    };
   }
 
   export type TuiPlugin = (api: TuiPluginApi) => Promise<void> | void;

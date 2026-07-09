@@ -5,14 +5,12 @@ import {
   createEffect,
   createMemo,
   onCleanup,
-  getOwner,
-  runWithOwner,
   Show,
   For,
   type JSX,
 } from 'solid-js';
 import type { TuiPluginApi, TuiTheme } from '@opencode-ai/plugin/tui';
-import { loadSidebarRules, type SidebarRuleEntry } from '../data/rules.js';
+import { loadSidebarRules, type SidebarRuleEntry } from '../data/rules';
 
 interface SidebarContentProps {
   sessionId: string;
@@ -175,10 +173,6 @@ export function SidebarContent(props: SidebarContentProps): JSX.Element {
 
   const theme = (): ThemeColors => props.theme.current as ThemeColors;
 
-  // Capture the current reactive owner — needed so that async signal
-  // writes (after await) can be wrapped in runWithOwner to stay reactive.
-  const owner = getOwner();
-
   const resolveProjectDir = (): string | null => {
     return props.api.state.path.directory ?? null;
   };
@@ -202,19 +196,15 @@ export function SidebarContent(props: SidebarContentProps): JSX.Element {
       const result = await loadSidebarRules(dir, sessionId);
       // Discard if a newer request started
       if (requestId !== thisRequest) return;
-      // runWithOwner restores the reactive context after the await,
-      // ensuring setRules/setStatus are tracked by Solid's owner.
-      runWithOwner(owner, () => {
-        setRules(result.rules);
-        setSkippedCount(result.skippedCount);
-        setHasEvaluationState(result.hasEvaluationState);
-        setStatus('loaded');
-      });
+      setRules(result.rules);
+      setSkippedCount(result.skippedCount);
+      setHasEvaluationState(result.hasEvaluationState);
+      setStatus('loaded');
     } catch (err) {
       // Discard if a newer request started
       if (requestId !== thisRequest) return;
       console.error('[opencode-rules] Failed to load rules:', err);
-      runWithOwner(owner, () => setStatus('error'));
+      setStatus('error');
     }
   };
 
@@ -231,14 +221,10 @@ export function SidebarContent(props: SidebarContentProps): JSX.Element {
       const result = await loadSidebarRules(dir, sessionId);
       // Discard if a newer request started
       if (requestId !== thisRequest) return;
-      // runWithOwner restores the reactive context after the await,
-      // ensuring setRules/setSkippedCount/setHasEvaluationState are tracked.
-      runWithOwner(owner, () => {
-        setRules(result.rules);
-        setSkippedCount(result.skippedCount);
-        setHasEvaluationState(result.hasEvaluationState);
-        setStatus('loaded');
-      });
+      setRules(result.rules);
+      setSkippedCount(result.skippedCount);
+      setHasEvaluationState(result.hasEvaluationState);
+      setStatus('loaded');
     } catch (err) {
       // Discard if a newer request started
       if (requestId !== thisRequest) return;
