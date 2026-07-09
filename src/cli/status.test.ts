@@ -1,8 +1,9 @@
 /**
  * Tests for the status command.
  *
- * Covers: installed yes/no, specifier reporting, config path reporting,
- * version reporting, malformed config handling.
+ * Covers: installed yes/no across both configs, specifier reporting for
+ * server and TUI, config path reporting, version reporting,
+ * malformed config handling.
  */
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
@@ -94,6 +95,7 @@ class InMemoryCliFs implements CliFs {
   existsSync(p: string): boolean {
     if (this.files.has(p)) return true;
     if (this.dirs.has(p)) return true;
+    if (this.dirs.has(p)) return true;
     for (const file of this.files.keys()) {
       if (file.startsWith(p + '/')) return true;
     }
@@ -102,17 +104,20 @@ class InMemoryCliFs implements CliFs {
 }
 
 // ---------------------------------------------------------------------------
-// Helper
+// Helpers
 // ---------------------------------------------------------------------------
 
-function makeConfigPath(fs: InMemoryCliFs): string {
-  return '/home/user/.config/opencode/opencode.json';
+const SERVER_PATH = '/home/user/.config/opencode/opencode.json';
+const TUI_PATH = '/home/user/.config/opencode/tui.json';
+
+function seedServer(fs: InMemoryCliFs, content: string): void {
+  fs.mkdirSync('/home/user/.config/opencode', { recursive: true });
+  fs.writeFileSync(SERVER_PATH, content);
 }
 
-function seedConfig(fs: InMemoryCliFs, content: string): void {
-  const configPath = makeConfigPath(fs);
+function seedTui(fs: InMemoryCliFs, content: string): void {
   fs.mkdirSync('/home/user/.config/opencode', { recursive: true });
-  fs.writeFileSync(configPath, content);
+  fs.writeFileSync(TUI_PATH, content);
 }
 
 // ---------------------------------------------------------------------------
@@ -133,15 +138,42 @@ describe('runStatus', () => {
     restoreEnv(envSnapshot);
   });
 
-  it('reports installed=true with specifier and path when opencode-rules-md is present', () => {
+  it('reports installed=true when present in both server and TUI configs', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.6.5'] }));
+    seedServer(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.6.5'] }));
+    seedTui(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.6.5'] }));
 
     const result = runStatus(fs);
 
     expect(result.installed).toBe(true);
-    expect(result.specifier).toBe('opencode-rules-md@0.6.5');
-    expect(result.path).toBe(makeConfigPath(fs));
+    expect(result.serverSpecifier).toBe('opencode-rules-md@0.6.5');
+    expect(result.tuiSpecifier).toBe('opencode-rules-md@0.6.5');
+    expect(result.serverPath).toBe(SERVER_PATH);
+    expect(result.tuiPath).toBe(TUI_PATH);
+  });
+
+  it('reports installed=false when missing from server config', () => {
+    const fs = new InMemoryCliFs();
+    seedServer(fs, JSON.stringify({ plugin: ['other-plugin'] }));
+    seedTui(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
+
+    const result = runStatus(fs);
+
+    expect(result.installed).toBe(false);
+    expect(result.serverSpecifier).toBeUndefined();
+    expect(result.tuiSpecifier).toBe('opencode-rules-md');
+  });
+
+  it('reports installed=false when missing from TUI config', () => {
+    const fs = new InMemoryCliFs();
+    seedServer(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
+    // TUI config does not exist
+
+    const result = runStatus(fs);
+
+    expect(result.installed).toBe(false);
+    expect(result.serverSpecifier).toBe('opencode-rules-md');
+    expect(result.tuiSpecifier).toBeUndefined();
   });
 
   it('reports installed=false when no config exists', () => {
@@ -151,30 +183,23 @@ describe('runStatus', () => {
     const result = runStatus(fs);
 
     expect(result.installed).toBe(false);
-    expect(result.specifier).toBeUndefined();
+    expect(result.serverSpecifier).toBeUndefined();
+    expect(result.tuiSpecifier).toBeUndefined();
   });
 
-  it('reports installed=false when config exists but plugin array is empty', () => {
+  it('reports installed=false when configs exist but plugin arrays are empty', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: [] }));
+    seedServer(fs, JSON.stringify({ plugin: [] }));
+    seedTui(fs, JSON.stringify({ plugin: [] }));
 
     const result = runStatus(fs);
 
     expect(result.installed).toBe(false);
   });
 
-  it('reports installed=false when opencode-rules-md is not in plugin list', () => {
+  it('surfaces parseError and returns installed=false for malformed server config', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: ['some-other-plugin'] }));
-
-    const result = runStatus(fs);
-
-    expect(result.installed).toBe(false);
-  });
-
-  it('surfaces parseError and returns installed=false for malformed config', () => {
-    const fs = new InMemoryCliFs();
-    seedConfig(fs, '{ invalid json }');
+    seedServer(fs, '{ invalid json }');
 
     const result = runStatus(fs);
 
@@ -182,23 +207,27 @@ describe('runStatus', () => {
     expect(result.parseError).toBeDefined();
   });
 
-  it('reports installed=false when config has no plugin key', () => {
+  it('reports version from package.json', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ otherKey: 'value' }));
+    seedServer(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
+    seedTui(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
 
     const result = runStatus(fs);
 
-    expect(result.installed).toBe(false);
-  });
-
-  it('returns the bundled version', () => {
-    const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
-
-    const result = runStatus(fs);
-
-    // Version should come from package.json — 0.6.5 is the current version
     expect(result.version).toBeTruthy();
     expect(typeof result.version).toBe('string');
+  });
+
+  it('reports both config paths even when only one has the plugin', () => {
+    const fs = new InMemoryCliFs();
+    seedServer(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
+    seedTui(fs, JSON.stringify({ plugin: [] }));
+
+    const result = runStatus(fs);
+
+    expect(result.serverPath).toBe(SERVER_PATH);
+    expect(result.tuiPath).toBe(TUI_PATH);
+    expect(result.serverExisted).toBe(true);
+    expect(result.tuiExisted).toBe(true);
   });
 });

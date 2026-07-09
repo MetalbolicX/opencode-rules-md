@@ -3,7 +3,8 @@
  *
  * Uses in-memory CliFs to avoid real filesystem access.
  * Covers: install dispatch, status dispatch, unknown command,
- * --help, --version, --latest, --dry-run, --yes, exit codes.
+ * --help, --version, --latest, --dry-run, --yes, exit codes,
+ * symlink-safe entry detection, and error surfacing.
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
@@ -106,14 +107,12 @@ class InMemoryCliFs implements CliFs {
 // Helper
 // ---------------------------------------------------------------------------
 
-function makeConfigPath(): string {
-  return '/home/user/.config/opencode/opencode.json';
-}
+const SERVER_PATH = '/home/user/.config/opencode/opencode.json';
+const TUI_PATH = '/home/user/.config/opencode/tui.json';
 
-function seedConfig(fs: InMemoryCliFs, content: string): void {
-  const configPath = makeConfigPath();
+function seedServer(fs: InMemoryCliFs, content: string): void {
   fs.mkdirSync('/home/user/.config/opencode', { recursive: true });
-  fs.writeFileSync(configPath, content);
+  fs.writeFileSync(SERVER_PATH, content);
 }
 
 // ---------------------------------------------------------------------------
@@ -122,45 +121,68 @@ function seedConfig(fs: InMemoryCliFs, content: string): void {
 
 describe('runMain', () => {
   let envSnapshot: EnvSnapshot;
+  let consoleSpy: ReturnType<typeof vi.spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     envSnapshot = saveEnv();
     process.env.HOME = '/home/user';
     delete process.env.OPENCODE_CONFIG_DIR;
     delete process.env.XDG_CONFIG_HOME;
+    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
     restoreEnv(envSnapshot);
+    consoleSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 
   it('dispatches install command and returns 0 on success', async () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, '{}');
+    seedServer(fs, '{}');
 
     const result = await runMain(['install'], fs);
 
     expect(result).toBe(0);
-    const configPath = makeConfigPath();
-    const written = fs.readFileSync(configPath);
-    expect(written).toContain('opencode-rules-md');
+    expect(fs.readFileSync(SERVER_PATH)).toContain('opencode-rules-md');
+    expect(fs.readFileSync(TUI_PATH)).toContain('opencode-rules-md');
   });
 
-  it('creates config file if install command finds none', async () => {
+  it('creates config files if install command finds none', async () => {
     const fs = new InMemoryCliFs();
     fs.mkdirSync('/home/user/.config/opencode', { recursive: true });
 
     const result = await runMain(['install'], fs);
 
     expect(result).toBe(0);
-    const configPath = makeConfigPath();
-    expect(fs.existsSync(configPath)).toBe(true);
+    expect(fs.existsSync(SERVER_PATH)).toBe(true);
+    expect(fs.existsSync(TUI_PATH)).toBe(true);
+  });
+
+  it('returns 1 and prints error when install hits malformed config', async () => {
+    const fs = new InMemoryCliFs();
+    seedServer(fs, '{ invalid json }');
+
+    const result = await runMain(['install'], fs);
+
+    expect(result).toBe(1);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    const errorCall = consoleErrorSpy.mock.calls
+      .map(c => String(c[0] ?? ''))
+      .join('\n');
+    expect(errorCall).toMatch(/malformed|Error/);
   });
 
   it('dispatches status command and returns 0', async () => {
     const fs = new InMemoryCliFs();
     fs.mkdirSync('/home/user/.config/opencode', { recursive: true });
-    fs.writeFileSync(makeConfigPath(), JSON.stringify({ plugin: ['opencode-rules-md'] }));
+    fs.writeFileSync(
+      SERVER_PATH,
+      JSON.stringify({ plugin: ['opencode-rules-md'] })
+    );
+    fs.writeFileSync(TUI_PATH, JSON.stringify({ plugin: ['opencode-rules-md'] }));
 
     const result = await runMain(['status'], fs);
 
@@ -186,34 +208,36 @@ describe('runMain', () => {
 
   it('parses --version flag and returns 0', async () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, '{}');
+    seedServer(fs, '{}');
 
     const result = await runMain(['install', '--version', '1.2.3'], fs);
 
     expect(result).toBe(0);
-    const configPath = makeConfigPath();
-    expect(fs.readFileSync(configPath)).toContain('opencode-rules-md@1.2.3');
+    expect(fs.readFileSync(SERVER_PATH)).toContain('opencode-rules-md@1.2.3');
+    expect(fs.readFileSync(TUI_PATH)).toContain('opencode-rules-md@1.2.3');
   });
 
   it('parses --dry-run flag and returns 0 without writing', async () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, '{}');
+    seedServer(fs, '{}');
 
     const result = await runMain(['install', '--dry-run'], fs);
 
     expect(result).toBe(0);
-    // Config should be unchanged
-    expect(fs.readFileSync(makeConfigPath())).toBe('{}');
+    // Server config should be unchanged
+    expect(fs.readFileSync(SERVER_PATH)).toBe('{}');
+    // TUI config should not exist
+    expect(fs.existsSync(TUI_PATH)).toBe(false);
   });
 
   it('parses --yes flag and returns 0', async () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, '{}');
+    seedServer(fs, '{}');
 
     const result = await runMain(['install', '--yes'], fs);
 
     expect(result).toBe(0);
-    expect(fs.readFileSync(makeConfigPath())).toContain('opencode-rules-md');
+    expect(fs.readFileSync(SERVER_PATH)).toContain('opencode-rules-md');
   });
 
   it('parses -h and returns 0 (help)', async () => {
@@ -234,7 +258,7 @@ describe('runMain', () => {
 
   it('accepts --latest flag and returns 0', async () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, '{}');
+    seedServer(fs, '{}');
 
     const result = await runMain(['install', '--latest'], fs);
 

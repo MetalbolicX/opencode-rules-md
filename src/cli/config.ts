@@ -11,6 +11,19 @@ import * as path from 'node:path';
 import type { CliFs } from './real-fs.js';
 
 // ---------------------------------------------------------------------------
+// Public constants
+// ---------------------------------------------------------------------------
+
+/** npm package name for this plugin. */
+export const PLUGIN_NAME = 'opencode-rules-md';
+
+/** Filename for the OpenCode server config. */
+export const SERVER_CONFIG_FILENAME = 'opencode.json';
+
+/** Filename for the OpenCode TUI config. */
+export const TUI_CONFIG_FILENAME = 'tui.json';
+
+// ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
@@ -22,69 +35,59 @@ export interface LoadResult {
 }
 
 // ---------------------------------------------------------------------------
-// JSONC comment stripper
+// JSONC comment stripper — two-pass
 // ---------------------------------------------------------------------------
 
 /**
  * Strip JSONC comments and trailing commas while preserving
  * comment-like sequences inside string literals.
+ *
+ * Pass 1: strip `//` and `/* * /` comments (string-aware).
+ * Pass 2: strip trailing commas before `}` or `]`, skipping whitespace.
  */
 export function stripJsoncComments(content: string): string {
+  // Pass 1 — strip comments while preserving string contents
   let result = '';
   let i = 0;
-  while (i < content.length) {
-    const char = content[i];
+  let inString = false;
+  let escaped = false;
+  const len = content.length;
 
-    // Start of string (double-quoted only — JSON only supports double quotes)?
+  while (i < len) {
+    const char = content[i]!;
+
+    if (inString) {
+      result += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      i++;
+      continue;
+    }
+
     if (char === '"') {
+      inString = true;
       result += char;
       i++;
-      while (i < content.length) {
-        const c = content[i];
-        if (c === '\\' && i + 1 < content.length) {
-          // Escape sequence — copy both chars verbatim
-          result += c + content[i + 1];
-          i += 2;
-          continue;
-        }
-        if (c === '"') {
-          result += c;
-          i++;
-          break;
-        }
-        result += c;
-        i++;
-      }
       continue;
     }
 
-    // Line comment?
+    // Line comment: // until newline
     if (char === '/' && content[i + 1] === '/') {
-      while (i < content.length && content[i] !== '\n') {
-        i++;
-      }
+      i += 2;
+      while (i < len && content[i] !== '\n') i++;
       continue;
     }
 
-    // Block comment?
+    // Block comment: /* until */
     if (char === '/' && content[i + 1] === '*') {
       i += 2;
-      while (i + 1 < content.length && !(content[i] === '*' && content[i + 1] === '/')) {
-        i++;
-      }
-      // Only skip past */ if we actually found it
-      if (i + 1 < content.length) {
-        i += 2; // skip */
-      }
-      continue;
-    }
-
-    // Trailing comma before } or ]
-    if (
-      char === ',' &&
-      (content[i + 1] === '}' || content[i + 1] === ']')
-    ) {
-      i++;
+      while (i < len && !(content[i] === '*' && content[i + 1] === '/')) i++;
+      if (i < len) i += 2; // skip past */
       continue;
     }
 
@@ -92,7 +95,52 @@ export function stripJsoncComments(content: string): string {
     i++;
   }
 
-  return result;
+  // Pass 2 — strip trailing commas (with whitespace skip) before } or ]
+  let out = '';
+  let inStr = false;
+  let esc = false;
+  let j = 0;
+  const outLen = result.length;
+
+  while (j < outLen) {
+    const ch = result[j]!;
+
+    if (inStr) {
+      out += ch;
+      if (esc) {
+        esc = false;
+      } else if (ch === '\\') {
+        esc = true;
+      } else if (ch === '"') {
+        inStr = false;
+      }
+      j++;
+      continue;
+    }
+
+    if (ch === '"') {
+      inStr = true;
+      out += ch;
+      j++;
+      continue;
+    }
+
+    if (ch === ',') {
+      // Skip whitespace before checking for } or ]
+      let k = j + 1;
+      while (k < outLen && /\s/.test(result[k]!)) k++;
+      if (k < outLen && /[}\]]/.test(result[k]!)) {
+        // Drop the comma; jump to the bracket
+        j = k;
+        continue;
+      }
+    }
+
+    out += ch;
+    j++;
+  }
+
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,13 +156,14 @@ export function stripJsoncComments(content: string): string {
  */
 export function resolveGlobalConfigPath(
   fs: CliFs,
-  opts: { ensureDir?: boolean } = {}
+  opts: { ensureDir?: boolean; filename?: string } = {}
 ): string {
   const dir = resolveConfigDir();
   if (opts.ensureDir && !fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  return path.join(dir, 'opencode.json');
+  const filename = opts.filename ?? SERVER_CONFIG_FILENAME;
+  return path.join(dir, filename);
 }
 
 function resolveConfigDir(): string {
@@ -147,12 +196,15 @@ function resolveConfigDir(): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Load and parse the global opencode config.
+ * Load and parse a global OpenCode config file.
  * Treats a missing file as an empty config object (not an error).
  * Surfaces parse errors so callers can exit non-zero without corrupting data.
  */
-export function loadGlobalConfig(fs: CliFs): LoadResult {
-  const configPath = resolveGlobalConfigPath(fs);
+export function loadGlobalConfig(fs: CliFs, opts: { filename?: string } = {}): LoadResult {
+  const configPath = resolveGlobalConfigPath(
+    fs,
+    opts.filename ? { filename: opts.filename } : {}
+  );
 
   if (!fs.existsSync(configPath)) {
     return { path: configPath, existed: false, config: {} };
@@ -240,19 +292,19 @@ export function addPlugin(
 /**
  * Write a timestamped backup of the given config path and rotate so at most
  * 3 backups are retained (oldest deleted first).
- * Returns the path of the newly created backup.
+ * Returns the path of the newly created backup, or null if no backup was created.
  */
-export function rotateBackups(fs: CliFs, configPath: string, _pluginName: string): string {
+export function rotateBackups(fs: CliFs, configPath: string, _pluginName: string): string | null {
+  if (!fs.existsSync(configPath)) {
+    return null;
+  }
+
   const dir = path.dirname(configPath);
   const base = path.basename(configPath);
   const timestamp = Date.now();
   const newBak = path.join(dir, `${base}.bak.${timestamp}`);
 
-  if (fs.existsSync(configPath)) {
-    fs.copyFileSync(configPath, newBak);
-  } else {
-    fs.writeFileSync(newBak, '', 'utf-8');
-  }
+  fs.copyFileSync(configPath, newBak);
 
   // Collect existing backups sorted by timestamp (lexical sort on numeric suffix)
   const entries = fs.readdirSync(dir);
@@ -280,7 +332,7 @@ export function rotateBackups(fs: CliFs, configPath: string, _pluginName: string
 export function writeAtomically(fs: CliFs, configPath: string, content: string): void {
   const dir = path.dirname(configPath);
   const base = path.basename(configPath);
-  const tmpPath = path.join(dir, `.${base}.tmp.${Date.now()}`);
+  const tmpPath = path.join(dir, `.${base}.tmp.${Date.now()}-${process.pid}`);
 
   fs.writeFileSync(tmpPath, content, 'utf-8');
   fs.renameSync(tmpPath, configPath);

@@ -128,16 +128,6 @@ import * as configModule from './config.js';
 let memFs: InMemoryCliFs;
 let savedEnv: EnvSnapshot;
 
-function reimport(): typeof configModule {
-  // Clear the module cache so we get a fresh instance with the new memFs
-  // We do this by clearing the import cache and re-importing.
-  // Since the module is side-effect free we can simply re-use the same instance
-  // if we pass the fs in via a setter. Instead, we refactored config.ts to
-  // accept fs via its factory / setter — but for simplicity in this test
-  // file we just re-import after re-instantiating the module cache clear.
-  return configModule;
-}
-
 beforeEach(() => {
   memFs = new InMemoryCliFs();
   savedEnv = saveEnv('OPENCODE_CONFIG_DIR', 'XDG_CONFIG_HOME', 'HOME', 'APPDATA');
@@ -175,6 +165,21 @@ describe('JSONC strip', () => {
   it('strips trailing commas before closing bracket', () => {
     const result = configModule.stripJsoncComments('["a","b",]');
     expect(result).toBe('["a","b"]');
+  });
+
+  it('strips trailing commas with whitespace before closing brace', () => {
+    const result = configModule.stripJsoncComments('{"a":"b",\n}');
+    // The trailing comma and any whitespace before } is removed
+    expect(result).toBe('{"a":"b"}');
+    // The result must be valid JSON
+    expect(() => JSON.parse(result)).not.toThrow();
+    expect(JSON.parse(result)).toEqual({ a: 'b' });
+  });
+
+  it('strips trailing commas with multiple whitespace characters', () => {
+    const result = configModule.stripJsoncComments('{"a":"b",  \n\t}');
+    expect(() => JSON.parse(result)).not.toThrow();
+    expect(JSON.parse(result)).toEqual({ a: 'b' });
   });
 
   it('preserves comment-like sequences inside string values', () => {
@@ -457,5 +462,32 @@ describe('loadGlobalConfig', () => {
     expect(result.existed).toBe(true);
     expect(result.config).toEqual({});
     expect(result.parseError).toBeUndefined();
+  });
+
+  it('loads the TUI config when filename is specified', () => {
+    const mem = new InMemoryCliFs();
+    mem.seedFile('/home/user/.config/opencode/tui.json', '{"plugin":["a"]}');
+    delete process.env.OPENCODE_CONFIG_DIR;
+    delete process.env.XDG_CONFIG_HOME;
+    process.env.HOME = '/home/user';
+    const result = configModule.loadGlobalConfig(mem, {
+      filename: 'tui.json',
+    });
+    expect(result.existed).toBe(true);
+    expect(result.path).toBe('/home/user/.config/opencode/tui.json');
+    expect(result.config).toEqual({ plugin: ['a'] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TUI config constants
+// ---------------------------------------------------------------------------
+describe('TUI config constants', () => {
+  it('exports TUI config filename', () => {
+    expect(configModule.TUI_CONFIG_FILENAME).toBe('tui.json');
+  });
+
+  it('exports server config filename', () => {
+    expect(configModule.SERVER_CONFIG_FILENAME).toBe('opencode.json');
   });
 });

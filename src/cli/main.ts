@@ -3,7 +3,7 @@
  * CLI entrypoint for opencode-rules-md installer.
  *
  * Supports:
- *   install   — add opencode-rules-md to the global opencode config
+ *   install   — add opencode-rules-md to the global opencode + tui configs
  *   status    — report whether opencode-rules-md is installed
  *
  * Flags:
@@ -15,6 +15,8 @@
  */
 
 import { parseArgs } from 'node:util';
+import { pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
 import { runInstall } from './install.js';
 import { runStatus } from './status.js';
 import type { CliFs } from './real-fs.js';
@@ -29,7 +31,7 @@ const HELP_TEXT = `opencode-rules-md CLI
 Usage: opencode-rules-md <command> [options]
 
 Commands:
-  install   Add opencode-rules-md to the global opencode config
+  install   Add opencode-rules-md to the global opencode + tui configs
   status    Report whether opencode-rules-md is installed
 
 Options:
@@ -40,8 +42,7 @@ Options:
   -h, --help     Show this help text
 `.trim();
 
-const USAGE_ERROR_TEXT = `Error: unknown command. Run 'opencode-rules-md --help' for usage.
-`.trim();
+const USAGE_ERROR_TEXT = `Error: unknown command. Run 'opencode-rules-md --help' for usage.`.trim();
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -82,9 +83,6 @@ function parseCliArgs(argv: string[]): { command: string | null; options: CliOpt
     ...((values.help || values.h) && { help: true }),
   };
 
-  // Detect unknown flags (tokens that look like flags but aren't recognized)
-  // parseArgs already filters known tokens, so we check if any positional
-  // looks like an unknown option
   const unknownFlags: string[] = [];
 
   return { command, options, unknownFlags };
@@ -124,26 +122,19 @@ export async function runMain(argv: string[], fs: CliFs = realFs): Promise<ExitC
         const installOpts: { version?: string; dryRun?: boolean } = {};
         if (options.version !== undefined) installOpts.version = options.version;
         if (options.dryRun) installOpts.dryRun = true;
-        const installResult = runInstall(installOpts, fs);
-        // Map install status to exit code
-        if (installResult.status === 'error') {
-          return 1;
-        }
+        runInstall(installOpts, fs);
         return 0;
       }
-
       case 'status': {
         const statusResult = runStatus(fs);
-        // Print status to stdout
         if (statusResult.installed) {
-          console.log(`opencode-rules-md is installed (${statusResult.specifier})`);
+          const spec = statusResult.serverSpecifier ?? statusResult.tuiSpecifier;
+          console.log(`opencode-rules-md is installed (${spec})`);
         } else {
           console.log('opencode-rules-md is not installed');
         }
-        // Exit code 0 regardless of install state (status is read-only)
         return 0;
       }
-
       default: {
         console.error(`Error: unknown command '${command}'`);
         console.error(USAGE_ERROR_TEXT);
@@ -151,7 +142,8 @@ export async function runMain(argv: string[], fs: CliFs = realFs): Promise<ExitC
       }
     }
   } catch (err) {
-    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Error: ${message}`);
     return 1;
   }
 }
@@ -160,8 +152,27 @@ export async function runMain(argv: string[], fs: CliFs = realFs): Promise<ExitC
 // Entry point
 // ---------------------------------------------------------------------------
 
+/**
+ * Determine whether the current module is being executed as the main entry.
+ * Uses realpathSync + pathToFileURL so symlinked invocations (e.g. npx)
+ * are matched correctly.
+ */
+function isInvokedAsMain(): boolean {
+  if (!process.argv[1]) return false;
+
+  try {
+    const realArgv = pathToFileURL(realpathSync(process.argv[1])).href;
+    return import.meta.url === realArgv;
+  } catch {
+    try {
+      return import.meta.url === pathToFileURL(process.argv[1]).href;
+    } catch {
+      return false;
+    }
+  }
+}
+
 // Only run if executed directly (not imported as a module)
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const exitCode = await runMain(process.argv.slice(2));
-  process.exit(exitCode);
+if (isInvokedAsMain()) {
+  void runMain(process.argv.slice(2)).then(code => process.exit(code));
 }

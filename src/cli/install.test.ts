@@ -1,14 +1,16 @@
 /**
  * Tests for the install command.
  *
- * Covers: fresh install, idempotent re-run, dry-run, malformed config abort,
- * dedupe behavior, backup creation.
+ * Covers: fresh install to both server and TUI configs, idempotent re-run,
+ * dry-run, malformed config abort (throws), dedupe behavior, backup creation,
+ * backup rotation, version replacement, and TUI config handling.
  */
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { saveEnv, restoreEnv, type EnvSnapshot } from '../test-fixtures.js';
 import type { CliFs } from './real-fs.js';
 import { runInstall } from './install.js';
+import { SERVER_CONFIG_FILENAME, TUI_CONFIG_FILENAME } from './config.js';
 
 // ---------------------------------------------------------------------------
 // In-memory CliFs (same pattern as config.test.ts)
@@ -103,18 +105,20 @@ class InMemoryCliFs implements CliFs {
 }
 
 // ---------------------------------------------------------------------------
-// Helper
+// Helpers
 // ---------------------------------------------------------------------------
 
-function makeConfigPath(fs: InMemoryCliFs): string {
-  // Simulate ~/.config/opencode/opencode.json
-  return '/home/user/.config/opencode/opencode.json';
-}
+const SERVER_PATH = `/home/user/.config/opencode/${SERVER_CONFIG_FILENAME}`;
+const TUI_PATH = `/home/user/.config/opencode/${TUI_CONFIG_FILENAME}`;
 
 function seedConfig(fs: InMemoryCliFs, content: string): void {
-  const configPath = makeConfigPath(fs);
   fs.mkdirSync('/home/user/.config/opencode', { recursive: true });
-  fs.writeFileSync(configPath, content);
+  fs.writeFileSync(SERVER_PATH, content);
+}
+
+function seedTuiConfig(fs: InMemoryCliFs, content: string): void {
+  fs.mkdirSync('/home/user/.config/opencode', { recursive: true });
+  fs.writeFileSync(TUI_PATH, content);
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +130,6 @@ describe('runInstall', () => {
 
   beforeEach(() => {
     envSnapshot = saveEnv();
-    // Point HOME to a predictable location
     process.env.HOME = '/home/user';
     delete process.env.OPENCODE_CONFIG_DIR;
     delete process.env.XDG_CONFIG_HOME;
@@ -136,7 +139,7 @@ describe('runInstall', () => {
     restoreEnv(envSnapshot);
   });
 
-  it('writes opencode-rules-md to a fresh config', () => {
+  it('writes opencode-rules-md to both server and TUI configs on fresh install', () => {
     const fs = new InMemoryCliFs();
     seedConfig(fs, '{}');
 
@@ -144,101 +147,146 @@ describe('runInstall', () => {
 
     expect(result.status).toBe('wrote');
     expect(result.specifier).toBe('opencode-rules-md');
-    const configPath = makeConfigPath(fs);
-    expect(result.path).toBe(configPath);
-    const written = fs.readFileSync(configPath);
-    expect(written).toContain('"plugin"');
-    expect(written).toContain('opencode-rules-md');
+    expect(result.server.status).toBe('wrote');
+    expect(result.server.path).toBe(SERVER_PATH);
+    expect(result.tui.status).toBe('wrote');
+    expect(result.tui.path).toBe(TUI_PATH);
+
+    const serverWritten = fs.readFileSync(SERVER_PATH);
+    expect(serverWritten).toContain('"plugin"');
+    expect(serverWritten).toContain('opencode-rules-md');
+
+    const tuiWritten = fs.readFileSync(TUI_PATH);
+    expect(tuiWritten).toContain('"plugin"');
+    expect(tuiWritten).toContain('opencode-rules-md');
   });
 
-  it('creates config file if it does not exist', () => {
+  it('creates server config file if it does not exist', () => {
     const fs = new InMemoryCliFs();
     fs.mkdirSync('/home/user/.config/opencode', { recursive: true });
 
     const result = runInstall({}, fs);
 
     expect(result.status).toBe('wrote');
-    const configPath = makeConfigPath(fs);
-    expect(fs.existsSync(configPath)).toBe(true);
+    expect(fs.existsSync(SERVER_PATH)).toBe(true);
+    expect(fs.existsSync(TUI_PATH)).toBe(true);
   });
 
-  it('returns noop when already installed with same specifier', () => {
+  it('returns noop when already installed in both configs with same specifier', () => {
     const fs = new InMemoryCliFs();
     seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
+    seedTuiConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
 
     const result = runInstall({}, fs);
 
     expect(result.status).toBe('noop');
-    const configPath = makeConfigPath(fs);
-    const written = fs.readFileSync(configPath);
-    // Should not have duplicate
-    const matches = written.match(/"opencode-rules-md"/g);
+    expect(result.server.status).toBe('noop');
+    expect(result.tui.status).toBe('noop');
+
+    // Should not have duplicate entries
+    const matches = fs.readFileSync(SERVER_PATH).match(/"opencode-rules-md"/g);
     expect(matches?.length).toBe(1);
+  });
+
+  it('returns wrote when only server config has the plugin', () => {
+    const fs = new InMemoryCliFs();
+    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
+    // TUI config does not exist
+
+    const result = runInstall({}, fs);
+
+    expect(result.status).toBe('wrote');
+    expect(result.server.status).toBe('noop');
+    expect(result.tui.status).toBe('wrote');
+  });
+
+  it('returns wrote when only TUI config has the plugin', () => {
+    const fs = new InMemoryCliFs();
+    seedConfig(fs, JSON.stringify({ plugin: ['other-plugin'] }));
+    seedTuiConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md'] }));
+
+    const result = runInstall({}, fs);
+
+    expect(result.status).toBe('wrote');
+    expect(result.server.status).toBe('wrote');
+    expect(result.tui.status).toBe('noop');
   });
 
   it('replaces existing opencode-rules-md with new version when version differs', () => {
     const fs = new InMemoryCliFs();
     seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.1.0'] }));
+    seedTuiConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.1.0'] }));
 
     const result = runInstall({ version: '0.2.0' }, fs);
 
     expect(result.status).toBe('wrote');
-    const configPath = makeConfigPath(fs);
-    const written = fs.readFileSync(configPath);
-    expect(written).toContain('opencode-rules-md@0.2.0');
-    expect(written).not.toContain('opencode-rules-md@0.1.0');
+    expect(fs.readFileSync(SERVER_PATH)).toContain('opencode-rules-md@0.2.0');
+    expect(fs.readFileSync(SERVER_PATH)).not.toContain('opencode-rules-md@0.1.0');
+    expect(fs.readFileSync(TUI_PATH)).toContain('opencode-rules-md@0.2.0');
+    expect(fs.readFileSync(TUI_PATH)).not.toContain('opencode-rules-md@0.1.0');
   });
 
-  it('dry-run returns planned without writing', () => {
+  it('dry-run returns planned without writing either config', () => {
     const fs = new InMemoryCliFs();
     seedConfig(fs, '{}');
 
     const result = runInstall({ dryRun: true }, fs);
 
     expect(result.status).toBe('planned');
-    const configPath = makeConfigPath(fs);
-    // Config should be unchanged (still empty object)
-    expect(fs.readFileSync(configPath)).toBe('{}');
+    expect(result.server.status).toBe('planned');
+    expect(result.tui.status).toBe('planned');
+    // Server config should be unchanged
+    expect(fs.readFileSync(SERVER_PATH)).toBe('{}');
   });
 
-  it('returns parseError when config is malformed', () => {
+  it('throws when server config is malformed', () => {
     const fs = new InMemoryCliFs();
     seedConfig(fs, '{ invalid json }');
 
-    const result = runInstall({}, fs);
-
-    expect(result.status).toBe('error');
-    expect(result.parseError).toBeDefined();
-    const configPath = makeConfigPath(fs);
-    // Original should be untouched
-    expect(fs.readFileSync(configPath)).toBe('{ invalid json }');
+    expect(() => runInstall({}, fs)).toThrow(/opencode.json is malformed/);
+    // Original config should be untouched
+    expect(fs.readFileSync(SERVER_PATH)).toBe('{ invalid json }');
   });
 
-  it('creates a backup before writing', () => {
+  it('throws when TUI config is malformed', () => {
+    const fs = new InMemoryCliFs();
+    seedConfig(fs, '{}');
+    seedTuiConfig(fs, '{ invalid json }');
+
+    expect(() => runInstall({}, fs)).toThrow(/tui.json is malformed/);
+  });
+
+  it('creates backups before writing each config', () => {
     const fs = new InMemoryCliFs();
     seedConfig(fs, JSON.stringify({ plugin: ['other-plugin'] }));
+    seedTuiConfig(fs, JSON.stringify({ plugin: ['other-plugin'] }));
 
     const result = runInstall({}, fs);
 
-    expect(result.status).toBe('wrote');
-    expect(result.backup).toBeDefined();
-    expect(fs.existsSync(result.backup!)).toBe(true);
-    // Backup should contain original content
-    expect(fs.readFileSync(result.backup!)).toContain('other-plugin');
+    expect(result.server.backup).toBeDefined();
+    expect(fs.existsSync(result.server.backup!)).toBe(true);
+    expect(fs.readFileSync(result.server.backup!)).toContain('other-plugin');
+
+    expect(result.tui.backup).toBeDefined();
+    expect(fs.existsSync(result.tui.backup!)).toBe(true);
   });
 
-  it('removes existing opencode-rules-md entries before adding', () => {
+  it('removes existing opencode-rules-md entries before adding new specifier', () => {
     const fs = new InMemoryCliFs();
-    seedConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.1.0', 'some-other-plugin'] }));
+    seedConfig(
+      fs,
+      JSON.stringify({ plugin: ['opencode-rules-md@0.1.0', 'some-other-plugin'] })
+    );
+    seedTuiConfig(fs, JSON.stringify({ plugin: ['opencode-rules-md@0.1.0'] }));
 
     const result = runInstall({ version: '0.2.0' }, fs);
 
     expect(result.status).toBe('wrote');
-    const configPath = makeConfigPath(fs);
-    const written = fs.readFileSync(configPath);
-    expect(written).toContain('some-other-plugin');
-    expect(written).toContain('opencode-rules-md@0.2.0');
-    expect(written).not.toContain('opencode-rules-md@0.1.0');
+    expect(fs.readFileSync(SERVER_PATH)).toContain('some-other-plugin');
+    expect(fs.readFileSync(SERVER_PATH)).toContain('opencode-rules-md@0.2.0');
+    expect(fs.readFileSync(SERVER_PATH)).not.toContain('opencode-rules-md@0.1.0');
+    expect(fs.readFileSync(TUI_PATH)).toContain('opencode-rules-md@0.2.0');
+    expect(fs.readFileSync(TUI_PATH)).not.toContain('opencode-rules-md@0.1.0');
   });
 
   it('appends specifier with version when version option is provided', () => {
@@ -247,27 +295,45 @@ describe('runInstall', () => {
 
     const result = runInstall({ version: '1.2.3' }, fs);
 
-    expect(result.status).toBe('wrote');
     expect(result.specifier).toBe('opencode-rules-md@1.2.3');
-    const configPath = makeConfigPath(fs);
-    expect(fs.readFileSync(configPath)).toContain('opencode-rules-md@1.2.3');
+    expect(fs.readFileSync(SERVER_PATH)).toContain('opencode-rules-md@1.2.3');
+    expect(fs.readFileSync(TUI_PATH)).toContain('opencode-rules-md@1.2.3');
   });
 
-  it('rotates backups, keeping at most 3', () => {
+  it('rotates server backups, keeping at most 3', () => {
     const fs = new InMemoryCliFs();
     seedConfig(fs, JSON.stringify({ plugin: ['p1'] }));
-    const configPath = makeConfigPath(fs);
 
     // Create 3 existing backups
-    fs.writeFileSync(`${configPath}.bak.1`, 'backup1');
-    fs.writeFileSync(`${configPath}.bak.2`, 'backup2');
-    fs.writeFileSync(`${configPath}.bak.3`, 'backup3');
+    fs.writeFileSync(`${SERVER_PATH}.bak.1`, 'backup1');
+    fs.writeFileSync(`${SERVER_PATH}.bak.2`, 'backup2');
+    fs.writeFileSync(`${SERVER_PATH}.bak.3`, 'backup3');
 
     runInstall({ version: '1.0.0' }, fs);
 
     // Oldest (bak.1) should be deleted
-    expect(fs.existsSync(`${configPath}.bak.1`)).toBe(false);
-    expect(fs.existsSync(`${configPath}.bak.2`)).toBe(true);
-    expect(fs.existsSync(`${configPath}.bak.3`)).toBe(true);
+    expect(fs.existsSync(`${SERVER_PATH}.bak.1`)).toBe(false);
+    expect(fs.existsSync(`${SERVER_PATH}.bak.2`)).toBe(true);
+    expect(fs.existsSync(`${SERVER_PATH}.bak.3`)).toBe(true);
+  });
+
+  it('preserves unrelated plugins in both configs', () => {
+    const fs = new InMemoryCliFs();
+    seedConfig(
+      fs,
+      JSON.stringify({ plugin: ['opencode-agent-skills', 'opencode-smart-router@latest'] })
+    );
+    seedTuiConfig(fs, JSON.stringify({ plugin: ['other-tui-plugin'] }));
+
+    runInstall({}, fs);
+
+    const serverWritten = fs.readFileSync(SERVER_PATH);
+    expect(serverWritten).toContain('opencode-agent-skills');
+    expect(serverWritten).toContain('opencode-smart-router@latest');
+    expect(serverWritten).toContain('opencode-rules-md');
+
+    const tuiWritten = fs.readFileSync(TUI_PATH);
+    expect(tuiWritten).toContain('other-tui-plugin');
+    expect(tuiWritten).toContain('opencode-rules-md');
   });
 });
