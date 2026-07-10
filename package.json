@@ -1,6 +1,6 @@
 {
   "name": "opencode-rules-md",
-  "version": "0.6.6",
+  "version": "0.7.0",
   "description": "OpenCode plugin that discovers and injects markdown rules into system prompts",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -79,6 +79,23 @@
     "@opentui/core": "^0.4.3",
     "@opentui/solid": "^0.4.3",
     "solid-js": "1.9.14"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    },
+    "@opencode-ai/sdk": {
+      "optional": true
+    },
+    "@opentui/core": {
+      "optional": true
+    },
+    "@opentui/solid": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.3.9",
