@@ -64,13 +64,13 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
+    "./server": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
     "./tui": {
       "types": "./dist/tui/index.d.ts",
-      "import": "./tui/index.tsx"
-    },
-    "./cli": {
-      "types": "./dist/cli/main.d.ts",
-      "import": "./dist/cli.mjs"
+      "import": "./dist/tui/index.js"
     }
   },
   "peerDependencies": {
