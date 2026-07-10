@@ -43,18 +43,22 @@ approach.
 
 ### Installation
 
+The plugin is installed via OpenCode's native plugin command, which patches
+both the global server config (`opencode.json`) and the TUI config (`tui.json`)
+in one flow:
+
 ```bash
-opencode plugin opencode-rules-md@latest --global
+opencode plugin add opencode-rules-md@latest --global
 ```
 
 <details>
 <summary>Manual installation</summary>
 
-Add the plugin to your opencode config:
+Add the plugin to your OpenCode server config:
 
 ```json
+// ~/.config/opencode/opencode.json
 {
-  "$schema": "https://opencode.ai/config.json",
   "plugin": ["opencode-rules-md@latest"]
 }
 ```
@@ -69,6 +73,12 @@ To enable the TUI sidebar, add the same plugin entry to your TUI config:
 ```
 
 </details>
+
+> [!NOTE]
+> OpenCode's `opencode plugin add` command handles npm install + config patching
+> + target detection for both server and TUI. The package exposes separate
+> compiled entrypoints for each target (`./server` and `./tui`), which
+> OpenCode's installer resolves automatically.
 
 ### Create Your First Rule
 

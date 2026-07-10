@@ -5,16 +5,12 @@
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "type": "module",
-  "bin": {
-    "opencode-rules-md": "./dist/cli.mjs"
-  },
   "oc-plugin": [
     "server",
     "tui"
   ],
   "scripts": {
-    "build": "tsc && bun run build:cli",
-    "build:cli": "bun build src/cli/main.ts --outfile dist/cli.mjs --target node",
+    "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
