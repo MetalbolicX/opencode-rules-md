@@ -1,6 +1,7 @@
 // tui/index.test.tsx
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { fileURLToPath } from 'url';
+import { readFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import pluginExports from './index.js';
 
@@ -41,6 +42,17 @@ describe('TUI bundle smoke', () => {
     const bundle = await import(`file://${distPath}`);
     expect(bundle.default).toBeDefined();
     expect(typeof bundle.default.tui).toBe('function');
+  });
+
+  // Content-level regression guard for the 0.8.2 bug where Bun wrote the
+  // reactive bundle to dist/tui/tui/index.js and the non-reactive tsc output
+  // survived untouched at dist/tui/index.js. If the bundle is non-reactive
+  // (e.g. tsc-only `_jsx` from `@opentui/solid/jsx-runtime`), Solid signals
+  // never fire and the sidebar stays stuck on "Loading...".
+  it('bundle is reactive (no jsx-runtime leftovers)', () => {
+    const content = readFileSync(distPath, 'utf-8');
+    expect(content).not.toMatch(/jsx-runtime/);
+    expect(content).toMatch(/createSignal|createEffect|createMemo/);
   });
 
   it('bundle.tui registers sidebar_content slot', async () => {
