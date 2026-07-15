@@ -36,6 +36,7 @@ export interface CliFs {
   mkdirSync(path: string, opts?: { recursive?: boolean }): void;
   readdirSync(path: string): string[];
   existsSync(path: string): boolean;
+  rmdirSync(path: string): void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -299,6 +300,7 @@ export interface GlobalConfig {
 /**
  * Load and parse a global config file.
  * Returns { path, exists, data }. data is {} when file absent or empty.
+ * Throws if the file exists but contains malformed JSON.
  */
 export function loadGlobalConfig(
   fs: CliFs,
@@ -311,13 +313,9 @@ export function loadGlobalConfig(
     return { path: resolved.path, exists: false, data: {} };
   }
 
-  try {
-    const raw = fs.readFileSync(resolved.path);
-    const data = parseJsonc(raw);
-    return { path: resolved.path, exists: true, data };
-  } catch {
-    return { path: resolved.path, exists: false, data: {} };
-  }
+  const raw = fs.readFileSync(resolved.path);
+  const data = parseJsonc(raw);
+  return { path: resolved.path, exists: true, data };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

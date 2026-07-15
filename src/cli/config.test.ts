@@ -94,6 +94,19 @@ function makeFakeFs(
     existsSync(path: string): boolean {
       return fileMap.has(path) || dirSet.has(path);
     },
+    rmdirSync(path: string): void {
+      if (!dirSet.has(path)) {
+        const err = new Error(`ENOENT: ${path}`);
+        (err as NodeJS.ErrnoException).code = 'ENOENT';
+        throw err;
+      }
+      dirSet.delete(path);
+      for (const key of [...fileMap.keys()]) {
+        if (key === path || key.startsWith(path + '/')) {
+          fileMap.delete(key);
+        }
+      }
+    },
   };
 }
 

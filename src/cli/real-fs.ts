@@ -13,6 +13,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmdirSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -37,4 +38,7 @@ export const createRealFs = (): CliFs => ({
   },
   readdirSync: (path) => readdirSync(path),
   existsSync: (path) => existsSync(path),
+  rmdirSync: (path) => {
+    rmdirSync(path);
+  },
 });
