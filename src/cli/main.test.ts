@@ -242,6 +242,34 @@ describe('runMain unknown command', () => {
     const exitCode = await runMain(opts, ['install', '--unknown-opt']);
     expect(exitCode).toBe(2);
   });
+
+  it('malformed config prints friendly error and exits 1', async () => {
+    const home = homedir();
+    const cfgDir = resolve(home, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+
+    const fs = makeFakeFs(
+      { [opencodePath]: '{ invalid json }' },
+      [cfgDir],
+    );
+    const fakeEnv = makeFakeEnv();
+    const logs: string[] = [];
+    const errors: string[] = [];
+
+    const opts: MainOptions = {
+      fs,
+      env: fakeEnv,
+      stdout: (s: string) => logs.push(s),
+      stderr: (s: string) => errors.push(s),
+    };
+
+    const exitCode = await runMain(opts, ['install']);
+    expect(exitCode).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(opencodePath);
+    expect(errors[0]).toContain('malformed JSON');
+    expect(errors[0]).toContain('Fix the JSON error');
+  });
 });
 
 // ─── Tests: command routing ──────────────────────────────────────────────────

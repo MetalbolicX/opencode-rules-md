@@ -314,9 +314,16 @@ export function loadGlobalConfig(
   }
 
   const raw = fs.readFileSync(resolved.path);
-  const data = parseJsonc(raw);
-  return { path: resolved.path, exists: true, data };
-}
+  try {
+    const data = parseJsonc(raw);
+    return { path: resolved.path, exists: true, data };
+  } catch (err) {
+    throw new Error(
+      `config file at ${resolved.path} is malformed JSON\n` +
+      `Fix the JSON error, or delete the file and re-run.\n` +
+      `  error: ${(err as Error).message}`,
+    );
+  }}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Backup helpers

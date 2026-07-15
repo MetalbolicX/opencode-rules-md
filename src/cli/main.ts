@@ -167,7 +167,8 @@ export const runMain = async (
   // Default to install for bare `omd`
   const resolvedCommand = command ?? 'install';
 
-  switch (resolvedCommand) {
+  try {
+    switch (resolvedCommand) {
     case 'install': {
       // Remaining argv for parseArgs to extract options
       const remaining = argv.slice(
@@ -271,6 +272,10 @@ export const runMain = async (
       stderr(`omd: unknown command '${resolvedCommand}'`);
       stderr("Run 'omd --help' for usage.");
       return 2;
+  }
+  } catch (err) {
+    stderr(`omd: ${(err as Error).message}`);
+    return 1;
   }
 };
 
