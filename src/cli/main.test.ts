@@ -18,6 +18,8 @@ import { runInstall, type InstallOptions } from '../cli/install.js';
 // @ts-ignore
 import { runUninstall, type UninstallOptions } from '../cli/uninstall.js';
 
+const MOCK_LATEST = '9.9.9';
+
 // ─── Fake CliFs factory (mirrors config.test.ts) ────────────────────────────
 
 function makeFakeFs(
@@ -128,6 +130,7 @@ describe('runMain (bare omd defaults to install)', () => {
       env: fakeEnv,
       stdout: (s: string) => logs.push(s),
       stderr: (s: string) => errors.push(s),
+      latestVersion: MOCK_LATEST,
     };
 
     // runMain with no command = install
@@ -154,13 +157,14 @@ describe('runMain (bare omd defaults to install)', () => {
       env: fakeEnv,
       stdout: (s: string) => logs.push(s),
       stderr: () => {},
+      latestVersion: MOCK_LATEST,
     };
 
     await runMain(opts, []);
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
     const tuiContent = JSON.parse(fs.readFileSync(tuiPath));
-    expect(opencodeContent.plugins).toContain('opencode-rules-md@latest');
-    expect(tuiContent.plugins).toContain('opencode-rules-md@latest');
+    expect(opencodeContent.plugins).toContain(`opencode-rules-md@${MOCK_LATEST}`);
+    expect(tuiContent.plugins).toContain(`opencode-rules-md@${MOCK_LATEST}`);
   });
 });
 
@@ -294,12 +298,13 @@ describe('runMain command routing', () => {
       env: fakeEnv,
       stdout: (s: string) => logs.push(s),
       stderr: () => {},
+      latestVersion: MOCK_LATEST,
     };
 
     const exitCode = await runMain(opts, ['install']);
     expect(exitCode).toBe(0);
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
-    expect(opencodeContent.plugins).toContain('opencode-rules-md@latest');
+    expect(opencodeContent.plugins).toContain(`opencode-rules-md@${MOCK_LATEST}`);
   });
 
   it('omd uninstall dispatches uninstall command', async () => {
@@ -384,6 +389,7 @@ describe('runMain command routing', () => {
       env: fakeEnv,
       stdout: (s: string) => logs.push(s),
       stderr: () => {},
+      latestVersion: MOCK_LATEST,
     };
 
     const exitCode = await runMain(opts, ['update']);
@@ -394,7 +400,7 @@ describe('runMain command routing', () => {
 // ─── Tests: runInstall ───────────────────────────────────────────────────────
 
 describe('runInstall', () => {
-  it('first install creates plugin entry in both configs', () => {
+  it('first install creates plugin entry in both configs', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -406,16 +412,16 @@ describe('runInstall', () => {
     }, [cfgDir]);
     const fakeEnv = makeFakeEnv();
 
-    const result = runInstall({}, fs, fakeEnv);
+    const result = await runInstall({ latestVersion: MOCK_LATEST }, fs, fakeEnv);
 
     expect(result.status).toBe('wrote');
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
     const tuiContent = JSON.parse(fs.readFileSync(tuiPath));
-    expect(opencodeContent.plugins).toContain('opencode-rules-md@latest');
-    expect(tuiContent.plugins).toContain('opencode-rules-md@latest');
+    expect(opencodeContent.plugins).toContain(`opencode-rules-md@${MOCK_LATEST}`);
+    expect(tuiContent.plugins).toContain(`opencode-rules-md@${MOCK_LATEST}`);
   });
 
-  it('--dry-run does not write to disk', () => {
+  it('--dry-run does not write to disk', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -427,7 +433,7 @@ describe('runInstall', () => {
     }, [cfgDir]);
     const fakeEnv = makeFakeEnv();
 
-    const result = runInstall({ dryRun: true }, fs, fakeEnv);
+    const result = await runInstall({ dryRun: true, latestVersion: MOCK_LATEST }, fs, fakeEnv);
 
     expect(result.status).toBe('wrote');
     // dry-run means nothing hit disk — the file content should be unchanged
@@ -435,7 +441,7 @@ describe('runInstall', () => {
     expect(opencodeContent.plugins).toEqual([]);
   });
 
-  it('--version pins a specific version', () => {
+  it('--version pins a specific version', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -447,14 +453,14 @@ describe('runInstall', () => {
     }, [cfgDir]);
     const fakeEnv = makeFakeEnv();
 
-    const result = runInstall({ version: '2.0.0' }, fs, fakeEnv);
+    const result = await runInstall({ version: '2.0.0' }, fs, fakeEnv);
 
     expect(result.status).toBe('wrote');
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
     expect(opencodeContent.plugins).toContain('opencode-rules-md@2.0.0');
   });
 
-  it('same-version reinstall is no-op (status=skipped)', () => {
+  it('same-version reinstall is no-op (status=skipped)', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -466,7 +472,7 @@ describe('runInstall', () => {
     }, [cfgDir]);
     const fakeEnv = makeFakeEnv();
 
-    const result = runInstall({ version: '2.0.0' }, fs, fakeEnv);
+    const result = await runInstall({ version: '2.0.0' }, fs, fakeEnv);
 
     expect(result.status).toBe('skipped');
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
@@ -476,7 +482,7 @@ describe('runInstall', () => {
     expect(tuiContent.plugins).toEqual(['opencode-rules-md@2.0.0']);
   });
 
-  it('dedup removes stale entries before appending fresh specifier', () => {
+  it('dedup removes stale entries before appending fresh specifier', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -488,7 +494,7 @@ describe('runInstall', () => {
     }, [cfgDir]);
     const fakeEnv = makeFakeEnv();
 
-    const result = runInstall({ version: '2.0.0' }, fs, fakeEnv);
+    const result = await runInstall({ version: '2.0.0' }, fs, fakeEnv);
 
     expect(result.status).toBe('wrote');
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
@@ -497,7 +503,7 @@ describe('runInstall', () => {
     expect(tuiContent.plugins).toEqual(['opencode-rules-md@2.0.0']);
   });
 
-  it('$schema is preserved in tui.json', () => {
+  it('$schema is preserved in tui.json', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const tuiPath = resolve(cfgDir, 'tui.json');
@@ -507,14 +513,14 @@ describe('runInstall', () => {
     }, [cfgDir]);
     const fakeEnv = makeFakeEnv();
 
-    runInstall({}, fs, fakeEnv);
+    await runInstall({ latestVersion: MOCK_LATEST }, fs, fakeEnv);
 
     const tuiContent = JSON.parse(fs.readFileSync(tuiPath));
     expect(tuiContent.$schema).toBe('./tui.schema.json');
-    expect(tuiContent.plugins).toContain('opencode-rules-md@latest');
+    expect(tuiContent.plugins).toContain(`opencode-rules-md@${MOCK_LATEST}`);
   });
 
-  it('--latest uses @latest specifier', () => {
+  it('--latest resolves to the concrete latest version', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -524,13 +530,13 @@ describe('runInstall', () => {
     }, [cfgDir]);
     const fakeEnv = makeFakeEnv();
 
-    runInstall({ version: 'latest' }, fs, fakeEnv);
+    await runInstall({ version: 'latest', latestVersion: MOCK_LATEST }, fs, fakeEnv);
 
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
-    expect(opencodeContent.plugins).toContain('opencode-rules-md@latest');
+    expect(opencodeContent.plugins).toContain(`opencode-rules-md@${MOCK_LATEST}`);
   });
 
-  it('malformed JSON in config aborts without writing', () => {
+  it('malformed JSON in config aborts without writing', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -540,7 +546,100 @@ describe('runInstall', () => {
     }, [cfgDir]);
     const fakeEnv = makeFakeEnv();
 
-    expect(() => runInstall({}, fs, fakeEnv)).toThrow();
+    await expect(runInstall({ latestVersion: MOCK_LATEST }, fs, fakeEnv)).rejects.toThrow();
+  });
+
+  it('preserves other plugins under a custom HOME directory', async () => {
+    const customHome = '/tmp/omd-test-home-preserves-plugins';
+    const cfgDir = resolve(customHome, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+
+    const fs = makeFakeFs({
+      [opencodePath]: JSON.stringify({ plugins: ['other-plugin@1', 'foo@2'] }),
+    }, [cfgDir]);
+    const fakeEnv = makeFakeEnv({ HOME: customHome });
+
+    const result = await runInstall({ latestVersion: MOCK_LATEST }, fs, fakeEnv);
+
+    expect(result.status).toBe('wrote');
+    const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
+    expect(opencodeContent.plugins).toEqual([
+      'other-plugin@1',
+      'foo@2',
+      `opencode-rules-md@${MOCK_LATEST}`,
+    ]);
+  });
+
+  it('preserves plugins from a JSONC config with comments', async () => {
+    const customHome = '/tmp/omd-test-home-jsonc';
+    const cfgDir = resolve(customHome, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.jsonc');
+
+    const fs = makeFakeFs({
+      [opencodePath]: `{
+  // existing plugins installed by the user
+  "plugins": ["other-plugin@1", "foo@2"]
+}`,
+    }, [cfgDir]);
+    const fakeEnv = makeFakeEnv({ HOME: customHome });
+
+    const result = await runInstall({ latestVersion: MOCK_LATEST }, fs, fakeEnv);
+
+    expect(result.status).toBe('wrote');
+    const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
+    expect(opencodeContent.plugins).toContain('other-plugin@1');
+    expect(opencodeContent.plugins).toContain('foo@2');
+    expect(opencodeContent.plugins).toContain(`opencode-rules-md@${MOCK_LATEST}`);
+  });
+
+  it('replaces an existing opencode-rules-md entry with the resolved version', async () => {
+    const home = homedir();
+    const cfgDir = resolve(home, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+
+    const fs = makeFakeFs({
+      [opencodePath]: JSON.stringify({
+        plugins: ['opencode-rules-md@1.0.0', 'other-plugin@1'],
+      }),
+    }, [cfgDir]);
+    const fakeEnv = makeFakeEnv();
+
+    const result = await runInstall({ latestVersion: MOCK_LATEST }, fs, fakeEnv);
+
+    expect(result.status).toBe('wrote');
+    const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
+    expect(opencodeContent.plugins).toEqual([
+      'other-plugin@1',
+      `opencode-rules-md@${MOCK_LATEST}`,
+    ]);
+  });
+
+  it('purges a stale cache directory when installing latest', async () => {
+    const home = homedir();
+    const cfgDir = resolve(home, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+    const cacheDir = resolve(home, '.cache', 'opencode', 'node_modules', 'opencode-rules-md');
+    const cachePackage = resolve(cacheDir, 'package.json');
+
+    const fs = makeFakeFs({
+      [opencodePath]: JSON.stringify({ plugins: [] }),
+      [cachePackage]: JSON.stringify({ version: '1.0.0' }),
+    }, [
+      cfgDir,
+      resolve(home, '.cache', 'opencode', 'node_modules'),
+      cacheDir,
+    ]);
+    const fakeEnv = makeFakeEnv();
+
+    const result = await runInstall(
+      { version: 'latest', latestVersion: MOCK_LATEST },
+      fs,
+      fakeEnv,
+    );
+
+    expect(result.status).toBe('wrote');
+    expect(result.purged).toBe(true);
+    expect(fs.existsSync(cacheDir)).toBe(false);
   });
 });
 

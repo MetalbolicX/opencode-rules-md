@@ -136,6 +136,11 @@ export interface MainOptions {
   env?: NodeJS.ProcessEnv;
   stdout?: (s: string) => void;
   stderr?: (s: string) => void;
+  /**
+   * Optional injection point for tests: pretend the npm registry returned this
+   * version when "latest" is requested by install or update.
+   */
+  latestVersion?: string;
 }
 
 export const runMain = async (
@@ -189,8 +194,9 @@ export const runMain = async (
         version: values['latest'] ? 'latest' : String(values['version'] ?? ''),
         dryRun: Boolean(values['dry-run']),
         yes: Boolean(values['yes']),
+        latestVersion: opts.latestVersion,
       };
-      const result = runInstall(installOpts, fs, env);
+      const result = await runInstall(installOpts, fs, env);
       if (result.status === 'skipped') {
         stdout('omd: already installed (no changes needed)');
         return 0;
@@ -201,6 +207,9 @@ export const runMain = async (
         } else if (r.status === 'skipped') {
           stdout(`omd: ${r.path} — already up to date`);
         }
+      }
+      if (result.purged) {
+        stdout('omd: cache purged');
       }
       return 0;
     }
@@ -261,7 +270,7 @@ export const runMain = async (
         },
       });
       const dryRun = Boolean(values['dry-run']);
-      const updateResult = await runUpdate(fs, env, stdout, stderr, { dryRun });
+      const updateResult = await runUpdate(fs, env, stdout, stderr, { dryRun, latestVersion: opts.latestVersion });
       if (updateResult.status === 'current') {
         stdout('omd: already at latest version');
       }

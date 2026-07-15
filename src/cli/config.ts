@@ -168,6 +168,21 @@ function resolveConfigDir(env: NodeJS.ProcessEnv): string {
   if (custom && custom.trim() !== '') {
     return custom;
   }
+
+  // Honor the XDG Base Directory Specification when it is set.
+  const xdg = env.XDG_CONFIG_HOME;
+  if (xdg && xdg.trim() !== '') {
+    return join(xdg, OPENCODE_CONFIG_SUBDIR);
+  }
+
+  // Fall back to $HOME/.config/opencode before using os.homedir().
+  // This keeps tests that control HOME deterministic and avoids loading the
+  // wrong global config when the process environment is customized.
+  const home = env.HOME;
+  if (home && home.trim() !== '') {
+    return join(home, '.config', OPENCODE_CONFIG_SUBDIR);
+  }
+
   return join(homedir(), '.config', OPENCODE_CONFIG_SUBDIR);
 }
 
