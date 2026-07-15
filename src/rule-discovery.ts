@@ -173,33 +173,45 @@ export interface DiscoveredRule {
 export async function discoverRuleFiles(
   projectDir?: string
 ): Promise<DiscoveredRule[]> {
-  const files: DiscoveredRule[] = [];
+  // Keyed by relativePath; later insertions shadow earlier ones.
+  // Global rules are inserted first (lowest precedence); project-local rules
+  // are inserted after and overwrite any global entry sharing the same key.
+  const byRelativePath = new Map<string, DiscoveredRule>();
 
-  // Discover global rules (recursively)
+  // Discover global rules (recursively) — inserted first (lowest precedence).
   const globalRulesDir = getGlobalRulesDir();
   if (globalRulesDir) {
     const globalRules = await scanDirectoryRecursively(
       globalRulesDir,
       globalRulesDir
     );
-    for (const { filePath, relativePath } of globalRules) {
-      debugLog(`Discovered global rule: ${relativePath} (${filePath})`);
-      files.push({ filePath, relativePath });
+    for (const rule of globalRules) {
+      debugLog(
+        `Discovered global rule: ${rule.relativePath} (${rule.filePath})`
+      );
+      byRelativePath.set(rule.relativePath, rule);
     }
   }
 
-  // Discover project-local rules (recursively) if project directory is provided
+  // Discover project-local rules (recursively) — shadow global duplicates.
   if (projectDir) {
     const projectRulesDir = path.join(projectDir, '.opencode', 'rules');
     const projectRules = await scanDirectoryRecursively(
       projectRulesDir,
       projectRulesDir
     );
-    for (const { filePath, relativePath } of projectRules) {
-      debugLog(`Discovered project rule: ${relativePath} (${filePath})`);
-      files.push({ filePath, relativePath });
+    for (const rule of projectRules) {
+      const shadowed = byRelativePath.has(rule.relativePath);
+      debugLog(
+        `Discovered project rule: ${rule.relativePath} (${rule.filePath})` +
+          (shadowed ? ' [shadows global]' : '')
+      );
+      byRelativePath.set(rule.relativePath, rule);
     }
   }
 
-  return files;
+  // Map preserves insertion order in JS, so global rules keep their relative
+  // order and shadowed slots retain their original position but point at the
+  // project file.
+  return Array.from(byRelativePath.values());
 }

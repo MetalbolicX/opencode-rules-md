@@ -82,4 +82,43 @@ describe('SessionStore', () => {
     expect(state?.rulesInjected).toBe(false);
     expect(state?.lastUserPrompt).toBe('new message');
   });
+
+  it('resets rulesInjected when the compaction TTL expires', () => {
+    const store = new SessionStore({ max: 100 });
+
+    // Pretend rules were injected in a prior turn.
+    store.upsert('ses_c', s => void (s.rulesInjected = true));
+
+    // Compaction starts at t=1000.
+    store.markCompacting('ses_c', 1000);
+
+    // Inside the active window: injection is skipped and rulesInjected is preserved.
+    expect(store.shouldSkipInjection('ses_c', 5000, 30_000)).toBe(true);
+    expect(store.get('ses_c')?.rulesInjected).toBe(true);
+
+    // Past the TTL: the store releases compaction AND re-arms injection.
+    expect(store.shouldSkipInjection('ses_c', 40_000, 30_000)).toBe(false);
+    expect(store.get('ses_c')?.rulesInjected).toBe(false);
+    expect(store.get('ses_c')?.isCompacting).toBe(false);
+  });
+
+  it('keeps rulesInjected unchanged during the active compaction window', () => {
+    const store = new SessionStore({ max: 100 });
+
+    store.upsert('ses_a', s => {
+      s.rulesInjected = true;
+      s.lastInjectedAt = 500;
+    });
+
+    store.markCompacting('ses_a', 1000);
+
+    // Multiple checks within the 30s window must not clear rulesInjected.
+    expect(store.shouldSkipInjection('ses_a', 5_000, 30_000)).toBe(true);
+    expect(store.get('ses_a')?.rulesInjected).toBe(true);
+    expect(store.shouldSkipInjection('ses_a', 15_000, 30_000)).toBe(true);
+    expect(store.get('ses_a')?.rulesInjected).toBe(true);
+    expect(store.shouldSkipInjection('ses_a', 29_999, 30_000)).toBe(true);
+    expect(store.get('ses_a')?.rulesInjected).toBe(true);
+    expect(store.get('ses_a')?.isCompacting).toBe(true);
+  });
 });

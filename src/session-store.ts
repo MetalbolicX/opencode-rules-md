@@ -108,6 +108,7 @@ export class SessionStore {
 
     this.upsert(sessionID, s => {
       s.isCompacting = false;
+      s.rulesInjected = false;
     });
 
     return false;

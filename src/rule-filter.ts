@@ -60,11 +60,22 @@ export function toolsMatchAvailable(
 }
 
 /**
+ * Rough token estimate using the chars/4 heuristic.
+ * No external dependency; accurate enough for budget decisions.
+ */
+export function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+/**
  * Result of reading and formatting rules
  */
 export interface FilterResult {
   formattedRules: string;
   matchedPaths: string[];
+  /** Estimated token count of formattedRules (0 when empty) */
+  tokenEstimate: number;
 }
 
 /**
@@ -103,7 +114,7 @@ export async function readAndFormatRules(
   context: RuleFilterContext = {}
 ): Promise<FilterResult> {
   if (files.length === 0) {
-    return { formattedRules: '', matchedPaths: [] };
+    return { formattedRules: '', matchedPaths: [], tokenEstimate: 0 };
   }
 
   const ruleContents: string[] = [];
@@ -257,13 +268,16 @@ export async function readAndFormatRules(
   }
 
   if (ruleContents.length === 0) {
-    return { formattedRules: '', matchedPaths: [] };
+    return { formattedRules: '', matchedPaths: [], tokenEstimate: 0 };
   }
 
+  const formattedRules =
+    `# OpenCode Rules\n\nPlease follow the following rules:\n\n` +
+    ruleContents.join('\n\n---\n\n');
+
   return {
-    formattedRules:
-      `# OpenCode Rules\n\nPlease follow the following rules:\n\n` +
-      ruleContents.join('\n\n---\n\n'),
+    formattedRules,
     matchedPaths,
+    tokenEstimate: estimateTokens(formattedRules),
   };
 }

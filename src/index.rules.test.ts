@@ -1158,6 +1158,128 @@ describe('discoverRuleFiles', () => {
     });
   });
 
+  describe('rule shadowing', () => {
+    it('should drop the global rule when the project has the same relativePath', async () => {
+      const { testDir, globalRulesDir } = getTestDirs();
+      const projectDir = path.join(testDir, 'project');
+      const projRulesDir = path.join(projectDir, '.opencode', 'rules');
+      mkdirSync(projRulesDir, { recursive: true });
+
+      const globalFoo = path.join(globalRulesDir, 'coding-standards.md');
+      const projectFoo = path.join(projRulesDir, 'coding-standards.md');
+      writeFileSync(globalFoo, '# Global coding standards');
+      writeFileSync(projectFoo, '# Project coding standards');
+
+      process.env.XDG_CONFIG_HOME = path.join(testDir, '.config');
+
+      const files = await discoverRuleFiles(projectDir);
+      const matches = files.filter(
+        f => f.relativePath === 'coding-standards.md'
+      );
+      expect(matches).toHaveLength(1);
+      expect(matches[0]?.filePath).toBe(projectFoo);
+    });
+
+    it('should keep non-colliding rules from both scopes', async () => {
+      const { testDir, globalRulesDir } = getTestDirs();
+      const projectDir = path.join(testDir, 'project');
+      const projRulesDir = path.join(projectDir, '.opencode', 'rules');
+      mkdirSync(projRulesDir, { recursive: true });
+
+      writeFileSync(
+        path.join(globalRulesDir, 'global-only.md'),
+        '# Global only'
+      );
+      writeFileSync(
+        path.join(projRulesDir, 'project-only.md'),
+        '# Project only'
+      );
+
+      process.env.XDG_CONFIG_HOME = path.join(testDir, '.config');
+
+      const files = await discoverRuleFiles(projectDir);
+      expect(files).toHaveLength(2);
+      expect(
+        files.some(
+          f =>
+            f.relativePath === 'global-only.md' &&
+            f.filePath.includes('global-only.md')
+        )
+      ).toBe(true);
+      expect(
+        files.some(
+          f =>
+            f.relativePath === 'project-only.md' &&
+            f.filePath.includes('project-only.md')
+        )
+      ).toBe(true);
+    });
+
+    it('should dedup subdirectory rules by relativePath and not collide across distinct subdirs', async () => {
+      const { testDir, globalRulesDir } = getTestDirs();
+      const projectDir = path.join(testDir, 'project');
+      const projRulesDir = path.join(projectDir, '.opencode', 'rules');
+      mkdirSync(projRulesDir, { recursive: true });
+
+      // Same relativePath (typescript/rules.md) in both scopes — project wins.
+      const globalTsDir = path.join(globalRulesDir, 'typescript');
+      const projectTsDir = path.join(projRulesDir, 'typescript');
+      mkdirSync(globalTsDir, { recursive: true });
+      mkdirSync(projectTsDir, { recursive: true });
+      writeFileSync(path.join(globalTsDir, 'rules.md'), '# Global TS rules');
+      writeFileSync(path.join(projectTsDir, 'rules.md'), '# Project TS rules');
+
+      // Different relativePaths — both survive.
+      const projectPyDir = path.join(projRulesDir, 'python');
+      mkdirSync(projectPyDir, { recursive: true });
+      writeFileSync(
+        path.join(projectPyDir, 'rules.md'),
+        '# Project Python rules'
+      );
+
+      process.env.XDG_CONFIG_HOME = path.join(testDir, '.config');
+
+      const files = await discoverRuleFiles(projectDir);
+      const tsMatches = files.filter(
+        f => f.relativePath === 'typescript/rules.md'
+      );
+      expect(tsMatches).toHaveLength(1);
+      expect(tsMatches[0]?.filePath).toBe(path.join(projectTsDir, 'rules.md'));
+
+      const pyMatches = files.filter(f => f.relativePath === 'python/rules.md');
+      expect(pyMatches).toHaveLength(1);
+      expect(pyMatches[0]?.filePath).toBe(path.join(projectPyDir, 'rules.md'));
+
+      // No accidental collision between typescript/rules.md and python/rules.md.
+      expect(files).toHaveLength(2);
+    });
+
+    it('should inject the project body, not the global body, after dedup', async () => {
+      const { testDir, globalRulesDir } = getTestDirs();
+      const projectDir = path.join(testDir, 'project');
+      const projRulesDir = path.join(projectDir, '.opencode', 'rules');
+      mkdirSync(projRulesDir, { recursive: true });
+
+      // Use a UNIQUE marker per scope so the test is unambiguous about which
+      // file was injected.
+      const globalFoo = path.join(globalRulesDir, 'foo.md');
+      const projectFoo = path.join(projRulesDir, 'foo.md');
+      writeFileSync(globalFoo, 'GLOBAL_BODY_MARKER global version of foo');
+      writeFileSync(projectFoo, 'PROJECT_BODY_MARKER project version of foo');
+
+      process.env.XDG_CONFIG_HOME = path.join(testDir, '.config');
+      clearRuleCache();
+
+      const { readAndFormatRules } = await import('./utils.js');
+      const files = await discoverRuleFiles(projectDir);
+      expect(files).toHaveLength(1);
+
+      const { formattedRules } = await readAndFormatRules(files);
+      expect(formattedRules).toContain('PROJECT_BODY_MARKER');
+      expect(formattedRules).not.toContain('GLOBAL_BODY_MARKER');
+    });
+  });
+
   describe('subdirectory scanning', () => {
     it('should discover rules in nested subdirectories', async () => {
       const { testDir, globalRulesDir } = getTestDirs();
@@ -1258,9 +1380,9 @@ describe('discoverRuleFiles', () => {
       try {
         const files = await discoverRuleFiles();
         expect(files).toEqual([]);
-        expect(warnings.filter(w => w.includes('opencode-rules-md'))).toHaveLength(
-          0
-        );
+        expect(
+          warnings.filter(w => w.includes('opencode-rules-md'))
+        ).toHaveLength(0);
       } finally {
         console.warn = originalWarn;
       }
@@ -1278,9 +1400,9 @@ describe('discoverRuleFiles', () => {
       try {
         const files = await discoverRuleFiles();
         expect(files).toEqual([]);
-        expect(warnings.filter(w => w.includes('opencode-rules-md'))).toHaveLength(
-          0
-        );
+        expect(
+          warnings.filter(w => w.includes('opencode-rules-md'))
+        ).toHaveLength(0);
       } finally {
         console.warn = originalWarn;
       }
