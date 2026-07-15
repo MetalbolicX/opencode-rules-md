@@ -110,7 +110,7 @@ function makeFakeEnv(overrides: Record<string, string | undefined> = {}): NodeJS
 // ─── Tests: runMain bare omd → install ───────────────────────────────────────
 
 describe('runMain (bare omd defaults to install)', () => {
-  it('bare omd with no args dispatches install and returns exit 0', () => {
+  it('bare omd with no args dispatches install and returns exit 0', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const cfgPath = resolve(cfgDir, 'opencode.json');
@@ -131,11 +131,11 @@ describe('runMain (bare omd defaults to install)', () => {
     };
 
     // runMain with no command = install
-    const exitCode = runMain(opts, []);
+    const exitCode = await runMain(opts, []);
     expect(exitCode).toBe(0);
   });
 
-  it('bare omd with no args writes plugin to both configs', () => {
+  it('bare omd with no args writes plugin to both configs', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -156,7 +156,7 @@ describe('runMain (bare omd defaults to install)', () => {
       stderr: () => {},
     };
 
-    runMain(opts, []);
+    await runMain(opts, []);
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
     const tuiContent = JSON.parse(fs.readFileSync(tuiPath));
     expect(opencodeContent.plugins).toContain('opencode-rules-md@latest');
@@ -167,7 +167,7 @@ describe('runMain (bare omd defaults to install)', () => {
 // ─── Tests: --help / -h ───────────────────────────────────────────────────────
 
 describe('runMain --help / -h', () => {
-  it('--help prints usage and exits 0', () => {
+  it('--help prints usage and exits 0', async () => {
     const fs = makeFakeFs({}, []);
     const fakeEnv = makeFakeEnv();
     const logs: string[] = [];
@@ -179,14 +179,14 @@ describe('runMain --help / -h', () => {
       stderr: () => {},
     };
 
-    const exitCode = runMain(opts, ['--help']);
+    const exitCode = await runMain(opts, ['--help']);
     expect(exitCode).toBe(0);
     const output = logs.join('');
     expect(output).toContain('Usage');
     expect(output).toContain('omd');
   });
 
-  it('-h prints usage and exits 0', () => {
+  it('-h prints usage and exits 0', async () => {
     const fs = makeFakeFs({}, []);
     const fakeEnv = makeFakeEnv();
     const logs: string[] = [];
@@ -198,7 +198,7 @@ describe('runMain --help / -h', () => {
       stderr: () => {},
     };
 
-    const exitCode = runMain(opts, ['-h']);
+    const exitCode = await runMain(opts, ['-h']);
     expect(exitCode).toBe(0);
     const output = logs.join('');
     expect(output).toContain('Usage');
@@ -209,7 +209,7 @@ describe('runMain --help / -h', () => {
 // ─── Tests: unknown command ──────────────────────────────────────────────────
 
 describe('runMain unknown command', () => {
-  it('unknown command exits 2 and prints usage', () => {
+  it('unknown command exits 2 and prints usage', async () => {
     const fs = makeFakeFs({}, []);
     const fakeEnv = makeFakeEnv();
     const logs: string[] = [];
@@ -222,11 +222,11 @@ describe('runMain unknown command', () => {
       stderr: (s: string) => errors.push(s),
     };
 
-    const exitCode = runMain(opts, ['notacommand']);
+    const exitCode = await runMain(opts, ['notacommand']);
     expect(exitCode).toBe(2);
   });
 
-  it('unknown option exits 2', () => {
+  it('unknown option exits 2', async () => {
     const fs = makeFakeFs({}, []);
     const fakeEnv = makeFakeEnv();
     const logs: string[] = [];
@@ -239,7 +239,7 @@ describe('runMain unknown command', () => {
       stderr: (s: string) => errors.push(s),
     };
 
-    const exitCode = runMain(opts, ['install', '--unknown-opt']);
+    const exitCode = await runMain(opts, ['install', '--unknown-opt']);
     expect(exitCode).toBe(2);
   });
 });
@@ -247,7 +247,7 @@ describe('runMain unknown command', () => {
 // ─── Tests: command routing ──────────────────────────────────────────────────
 
 describe('runMain command routing', () => {
-  it('omd install dispatches install command', () => {
+  it('omd install dispatches install command', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -268,13 +268,13 @@ describe('runMain command routing', () => {
       stderr: () => {},
     };
 
-    const exitCode = runMain(opts, ['install']);
+    const exitCode = await runMain(opts, ['install']);
     expect(exitCode).toBe(0);
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
     expect(opencodeContent.plugins).toContain('opencode-rules-md@latest');
   });
 
-  it('omd uninstall dispatches uninstall command', () => {
+  it('omd uninstall dispatches uninstall command', async () => {
     const home = homedir();
     const cfgDir = resolve(home, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
@@ -295,7 +295,7 @@ describe('runMain command routing', () => {
       stderr: () => {},
     };
 
-    const exitCode = runMain(opts, ['uninstall']);
+    const exitCode = await runMain(opts, ['uninstall']);
     expect(exitCode).toBe(0);
     const opencodeContent = JSON.parse(fs.readFileSync(opencodePath));
     const tuiContent = JSON.parse(fs.readFileSync(tuiPath));
@@ -303,7 +303,7 @@ describe('runMain command routing', () => {
     expect(tuiContent.plugins).not.toContain('opencode-rules-md@1.0.0');
   });
 
-  it('omd status dispatches status command (stub)', () => {
+  it('omd status dispatches status command (stub)', async () => {
     const fs = makeFakeFs({}, []);
     const fakeEnv = makeFakeEnv();
     const logs: string[] = [];
@@ -315,13 +315,23 @@ describe('runMain command routing', () => {
       stderr: () => {},
     };
 
-    const exitCode = runMain(opts, ['status']);
+    const exitCode = await runMain(opts, ['status']);
     expect(exitCode).toBe(0);
   });
 
-  it('omd doctor dispatches doctor command (stub)', () => {
-    const fs = makeFakeFs({}, []);
-    const fakeEnv = makeFakeEnv();
+  it('omd doctor dispatches doctor command', async () => {
+    const home = homedir();
+    const cfgDir = resolve(home, '.config', 'opencode');
+    const parentDir = resolve(home, '.config');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+    const tuiPath = resolve(cfgDir, 'tui.json');
+
+    const fs = makeFakeFs({
+      [opencodePath]: JSON.stringify({ plugins: ['opencode-rules-md@2.0.0'] }),
+      [tuiPath]: JSON.stringify({ plugins: ['opencode-rules-md@2.0.0'] }),
+    }, [cfgDir, parentDir]);
+    // Set HOME and a fake PATH containing bun so hasBun check passes
+    const fakeEnv = makeFakeEnv({ HOME: home, PATH: '/home/metalbolicx/.bun/bin:/usr/local/bin:/usr/bin:/bin' });
     const logs: string[] = [];
 
     const opts: MainOptions = {
@@ -331,11 +341,12 @@ describe('runMain command routing', () => {
       stderr: () => {},
     };
 
-    const exitCode = runMain(opts, ['doctor']);
+    const exitCode = await runMain(opts, ['doctor']);
+    // doctor exits 0 when checks pass (Node >= 20, Bun on PATH, configs OK)
     expect(exitCode).toBe(0);
   });
 
-  it('omd update dispatches update command (stub)', () => {
+  it('omd update dispatches update command (stub)', async () => {
     const fs = makeFakeFs({}, []);
     const fakeEnv = makeFakeEnv();
     const logs: string[] = [];
@@ -347,7 +358,7 @@ describe('runMain command routing', () => {
       stderr: () => {},
     };
 
-    const exitCode = runMain(opts, ['update']);
+    const exitCode = await runMain(opts, ['update']);
     expect(exitCode).toBe(0);
   });
 });

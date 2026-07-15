@@ -9,37 +9,10 @@
 import { parseArgs } from 'node:util';
 import { runInstall, type InstallOptions } from './install.js';
 import { runUninstall, type UninstallOptions } from './uninstall.js';
+import { runStatus, runDoctor } from './status.js';
+import { runUpdate } from './update.js';
 import { createRealFs } from './real-fs.js';
 import type { CliFs } from './config.js';
-
-// ─── Stubs for future slices ────────────────────────────────────────────────
-
-const runStatus = (
-  _opts: Record<string, unknown>,
-  _fs: CliFs,
-  _env: NodeJS.ProcessEnv,
-): number => {
-  // TODO: implement in Slice 3
-  return 0;
-};
-
-const runDoctor = (
-  _opts: Record<string, unknown>,
-  _fs: CliFs,
-  _env: NodeJS.ProcessEnv,
-): number => {
-  // TODO: implement in Slice 3
-  return 0;
-};
-
-const runUpdate = (
-  _opts: Record<string, unknown>,
-  _fs: CliFs,
-  _env: NodeJS.ProcessEnv,
-): number => {
-  // TODO: implement in Slice 3
-  return 0;
-};
 
 // ─── Usage ───────────────────────────────────────────────────────────────────
 
@@ -165,10 +138,10 @@ export interface MainOptions {
   stderr?: (s: string) => void;
 }
 
-export const runMain = (
+export const runMain = async (
   opts: MainOptions,
   argv: string[],
-): number => {
+): Promise<number> => {
   const {
     fs = createRealFs(),
     env = process.env,
@@ -267,20 +240,30 @@ export const runMain = (
     }
 
     case 'status': {
-      void runStatus({}, fs, env);
-      stdout('omd: status — not yet implemented');
+      await runStatus(fs, env, stdout);
       return 0;
     }
 
     case 'doctor': {
-      void runDoctor({}, fs, env);
-      stdout('omd: doctor — not yet implemented');
-      return 0;
+      const docResult = await runDoctor(fs, env, stdout, stderr);
+      return docResult.ok ? 0 : 1;
     }
 
     case 'update': {
-      void runUpdate({}, fs, env);
-      stdout('omd: update — not yet implemented');
+      const remaining = argv.slice(argv.indexOf(resolvedCommand) + 1);
+      const { values } = parseArgs({
+        argv: remaining,
+        allowPositionals: true,
+        strict: false,
+        options: {
+          'dry-run': { type: 'boolean', default: false },
+        },
+      });
+      const dryRun = Boolean(values['dry-run']);
+      const updateResult = await runUpdate(fs, env, stdout, stderr, { dryRun });
+      if (updateResult.status === 'current') {
+        stdout('omd: already at latest version');
+      }
       return 0;
     }
 
@@ -297,6 +280,6 @@ const isMainModule =
   import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`;
 
 if (isMainModule) {
-  const exitCode = runMain({}, process.argv.slice(2));
+  const exitCode = await runMain({}, process.argv.slice(2));
   process.exit(exitCode);
 }
