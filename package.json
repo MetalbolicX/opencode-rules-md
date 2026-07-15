@@ -9,8 +9,12 @@
     "server",
     "tui"
   ],
+  "bin": {
+    "omd": "./dist/cli.mjs"
+  },
   "scripts": {
-    "build": "tsc && bun scripts/build-tui.mjs",
+    "build": "tsc && bun scripts/build-tui.mjs && bun scripts/build-cli.mjs",
+    "build:cli": "bun scripts/build-cli.mjs",
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
@@ -38,6 +42,7 @@
   },
   "files": [
     "dist",
+    "dist/cli.mjs",
     "!dist/**/*.test.*",
     "!dist/**/*.spec.*",
     "!dist/**/test-fixtures.*",
