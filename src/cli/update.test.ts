@@ -1,29 +1,32 @@
 /**
  * src/cli/update.test.ts
  *
- * TDD RED tests for CLI update command.
- * - stale version triggers purge + instruction print
- * - current version says "already current"
- * - --dry-run prints planned purge
- * - registry unreachable → noop
- * - fetches npm latest for opencode-rules-md
+ * Tests for the redesigned `omd update` command.
  *
- * RED state: run `bun run test:run src/cli/update.test.ts` — tests fail because
- * src/cli/update.ts does not exist yet.
- * GREEN state: all tests pass once update.ts is implemented.
+ * Behavioral contract verified here:
+ *   - When stale, the command purges the actual OpenCode packages cache
+ *     (under ~/.cache/opencode/packages/opencode-rules-md*) and then
+ *     spawns `opencode plugin opencode-rules-md --global --force`.
+ *   - When current, the command reports "already at latest" without any
+ *     side effects.
+ *   - --dry-run prints the planned purge + spawn without touching disk.
+ *   - When the npm registry is unreachable, status is `unreachable` and
+ *     no spawn happens.
+ *   - The result shape exposes `cachePaths` (plural, array) so callers
+ *     can clean up multiple matching directories.
  */
 import { describe, it, expect } from 'vitest';
 import { resolve } from 'path';
 import { homedir } from 'os';
 
-// ─── Direct imports — fail at load time in RED until modules exist ───────────
+// @ts-ignore — module exists
+import { runUpdate, type UpdateResult } from '../cli/update.js';
+// @ts-ignore
+import type { SpawnResult } from '../cli/spawn.js';
 
-// @ts-ignore — module not yet written
-import { runUpdate } from '../cli/update.js';
-// @ts-ignore — types not yet written
-import type { UpdateResult } from '../cli/update.js';
+const FAKE_HOME = '/tmp/omd-update-test-home';
 
-// ─── Fake CliFs factory (mirrors config.test.ts and main.test.ts) ─────────────
+// ─── Fake CliFs factory ──────────────────────────────────────────────────────
 
 function makeFakeFs(
   files: Record<string, string> = {},
@@ -86,14 +89,30 @@ function makeFakeFs(
       dirSet.add(path);
     },
     readdirSync(path: string): string[] {
-      return [...fileMap.keys()].filter(p => {
-        const lastSep = p.lastIndexOf('/');
-        const dir = lastSep >= 0 ? p.slice(0, lastSep) : '';
-        return dir === path && p !== path;
-      }).map(p => {
-        const lastSep = p.lastIndexOf('/');
-        return lastSep >= 0 ? p.slice(lastSep + 1) : p;
-      });
+      // File children: files directly in `path`.
+      const fileChildren = [...fileMap.keys()]
+        .filter(p => {
+          const lastSep = p.lastIndexOf('/');
+          const dir = lastSep >= 0 ? p.slice(0, lastSep) : '';
+          return dir === path && p !== path;
+        })
+        .map(p => {
+          const lastSep = p.lastIndexOf('/');
+          return lastSep >= 0 ? p.slice(lastSep + 1) : p;
+        });
+      // Directory children: dirs in dirSet whose parent is `path`.
+      const dirChildren = [...dirSet]
+        .filter(d => {
+          if (d === path) return false;
+          const lastSep = d.lastIndexOf('/');
+          const parent = lastSep >= 0 ? d.slice(0, lastSep) : '';
+          return parent === path;
+        })
+        .map(d => {
+          const lastSep = d.lastIndexOf('/');
+          return lastSep >= 0 ? d.slice(lastSep + 1) : d;
+        });
+      return [...new Set([...fileChildren, ...dirChildren])];
     },
     existsSync(path: string): boolean {
       return fileMap.has(path) || dirSet.has(path);
@@ -105,274 +124,294 @@ function makeFakeFs(
 
 function makeFakeEnv(overrides: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
   return {
-    HOME: homedir(),
+    HOME: FAKE_HOME,
     OPENCODE_CONFIG_DIR: undefined,
     ...overrides,
   };
 }
 
-// ─── Fake console output tracker ─────────────────────────────────────────────
+// ─── Fake spawn factory ───────────────────────────────────────────────────────
 
-interface ConsoleOutput {
-  logs: string[];
-  errors: string[];
+interface SpawnCall {
+  args: string[];
 }
 
-function makeConsole(): ConsoleOutput {
-  return { logs: [], errors: [] };
+function makeFakeSpawn(result: SpawnResult = { status: 0, stdout: '', stderr: '' }): {
+  spawn: import('./update.js').UpdateOptions['spawn'];
+  calls: SpawnCall[];
+} {
+  const calls: SpawnCall[] = [];
+  return {
+    calls,
+    spawn: (async (args: string[]) => {
+      calls.push({ args });
+      return result;
+    }) as import('./update.js').UpdateOptions['spawn'],
+  };
 }
 
-// Helper: wrap array in a log function for passing to runUpdate
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function logFn(output: string[]): (s: string) => void {
-  return (s: string) => { output.push(s); };
+  return (s: string) => {
+    output.push(s);
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests: runUpdate
+// runUpdate
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('runUpdate', () => {
-  it('stale version triggers cache purge and prints reinstall instruction', async () => {
-    const home = homedir();
-    const cfgDir = resolve(home, '.config', 'opencode');
+  it('stale version: purges the packages cache and spawns --force', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
     const tuiPath = resolve(cfgDir, 'tui.json');
-    const cacheDir = resolve(home, '.cache', 'opencode', 'node_modules', 'opencode-rules-md');
+    const packagesDir = resolve(FAKE_HOME, '.cache', 'opencode', 'packages');
+    const cacheDir = resolve(packagesDir, 'opencode-rules-md@latest');
     const cachePackage = resolve(cacheDir, 'package.json');
 
     const fs = makeFakeFs({
-      [opencodePath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
-      [tuiPath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
+      [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@1.0.0'] }),
+      [tuiPath]: JSON.stringify({ plugin: ['opencode-rules-md@1.0.0'] }),
       [cachePackage]: JSON.stringify({ version: '1.0.0' }),
-    }, [
-      resolve(home, '.cache', 'opencode', 'node_modules'),
-      cacheDir,
-    ]);
+    }, [packagesDir, cacheDir]);
 
     const fakeEnv = makeFakeEnv();
-    const console_ = makeConsole();
+    const logs: string[] = [];
+    const fake = makeFakeSpawn();
 
-    // Simulate latest = 2.0.0 (stale case)
-    const result = await runUpdate(
+    const result = (await runUpdate(
       fs,
       fakeEnv,
-      logFn(console_.logs),
-      logFn(console_.errors),
-      { latestVersion: '2.0.0' },
-    ) as UpdateResult;
+      logFn(logs),
+      () => {},
+      { latestVersion: '2.0.0', spawn: fake.spawn },
+    )) as UpdateResult;
 
-    // Should have purged the cache
     expect(result.status).toBe('stale');
     expect(fs.existsSync(cacheDir)).toBe(false);
-
-    // Should have printed the reinstall instruction
-    const output = console_.logs.join(' ');
-    expect(output).toContain('npx opencode-rules-md@latest install');
+    // spawn was called once with the --force flag.
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]!.args).toEqual(['opencode-rules-md', '--global', '--force']);
   });
 
-  it('current version says "already current"', async () => {
-    const home = homedir();
-    const cfgDir = resolve(home, '.config', 'opencode');
+  it('current version: reports "already current" and does NOT spawn', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
     const tuiPath = resolve(cfgDir, 'tui.json');
 
     const fs = makeFakeFs({
-      [opencodePath]: JSON.stringify({ plugins: ['opencode-rules-md@2.0.0'] }),
-      [tuiPath]: JSON.stringify({ plugins: ['opencode-rules-md@2.0.0'] }),
+      [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@2.0.0'] }),
+      [tuiPath]: JSON.stringify({ plugin: ['opencode-rules-md@2.0.0'] }),
     }, [cfgDir]);
 
     const fakeEnv = makeFakeEnv();
-    const console_ = makeConsole();
+    const logs: string[] = [];
+    const fake = makeFakeSpawn();
 
-    // Simulate latest = 2.0.0 (current case)
-    const result = await runUpdate(
+    const result = (await runUpdate(
       fs,
       fakeEnv,
-      logFn(console_.logs),
-      logFn(console_.errors),
-      { latestVersion: '2.0.0' },
-    ) as UpdateResult;
+      logFn(logs),
+      () => {},
+      { latestVersion: '2.0.0', spawn: fake.spawn },
+    )) as UpdateResult;
 
     expect(result.status).toBe('current');
-    const output = console_.logs.join(' ');
-    expect(output).toMatch(/current|already|up.to.date/i);
+    expect(fake.calls).toHaveLength(0);
+    const output = logs.join(' ');
+    expect(output.toLowerCase()).toMatch(/already|latest/);
   });
 
-  it('--dry-run prints planned purge without removing cache', async () => {
-    const home = homedir();
-    const cfgDir = resolve(home, '.config', 'opencode');
+  it('--dry-run: does NOT purge or spawn', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
-    const tuiPath = resolve(cfgDir, 'tui.json');
-    const cacheDir = resolve(home, '.cache', 'opencode', 'node_modules', 'opencode-rules-md');
-    const cachePackage = resolve(cacheDir, 'package.json');
+    const packagesDir = resolve(FAKE_HOME, '.cache', 'opencode', 'packages');
+    const cacheDir = resolve(packagesDir, 'opencode-rules-md@latest');
 
     const fs = makeFakeFs({
-      [opencodePath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
-      [tuiPath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
-      [cachePackage]: JSON.stringify({ version: '1.0.0' }),
-    }, [
-      resolve(home, '.cache', 'opencode', 'node_modules'),
-      cacheDir,
-    ]);
+      [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@1.0.0'] }),
+      [resolve(cacheDir, 'package.json')]: JSON.stringify({ version: '1.0.0' }),
+    }, [packagesDir, cacheDir]);
 
     const fakeEnv = makeFakeEnv();
-    const console_ = makeConsole();
+    const logs: string[] = [];
+    const fake = makeFakeSpawn();
 
-    // Simulate latest = 2.0.0 with dry-run
-    const result = await runUpdate(
+    const result = (await runUpdate(
       fs,
       fakeEnv,
-      logFn(console_.logs),
-      logFn(console_.errors),
-      { latestVersion: '2.0.0', dryRun: true },
-    ) as UpdateResult;
+      logFn(logs),
+      () => {},
+      { latestVersion: '2.0.0', dryRun: true, spawn: fake.spawn },
+    )) as UpdateResult;
 
     expect(result.status).toBe('stale');
-    // Cache should still exist in dry-run
+    // Cache still present in dry-run.
     expect(fs.existsSync(cacheDir)).toBe(true);
-    // Should have printed dry-run indicator
-    const output = console_.logs.join(' ');
-    expect(output.toLowerCase()).toMatch(/dry|would|purge/);
+    // Spawn was not invoked.
+    expect(fake.calls).toHaveLength(0);
+    const output = logs.join(' ').toLowerCase();
+    expect(output).toMatch(/dry|would/);
   });
 
-  it('registry unreachable → noop', async () => {
-    const home = homedir();
-    const cfgDir = resolve(home, '.config', 'opencode');
+  it('registry unreachable: returns "unreachable" and does NOT spawn', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
-    const tuiPath = resolve(cfgDir, 'tui.json');
 
     const fs = makeFakeFs({
-      [opencodePath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
-      [tuiPath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
+      [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@1.0.0'] }),
     }, [cfgDir]);
 
     const fakeEnv = makeFakeEnv();
-    const console_ = makeConsole();
+    const logs: string[] = [];
+    const fake = makeFakeSpawn();
 
-    // Simulate registry unreachable (null latest)
-    const result = await runUpdate(
+    const result = (await runUpdate(
       fs,
       fakeEnv,
-      logFn(console_.logs),
-      logFn(console_.errors),
-      { latestVersion: null },
-    ) as UpdateResult;
+      logFn(logs),
+      () => {},
+      { latestVersion: null, spawn: fake.spawn },
+    )) as UpdateResult;
 
     expect(result.status).toBe('unreachable');
-    // Should not have thrown
-    expect(console_.errors.length).toBe(0);
+    expect(fake.calls).toHaveLength(0);
   });
 
-  it('returns UpdateResult with status, cachePath, and instruction', async () => {
-    const home = homedir();
-    const cfgDir = resolve(home, '.config', 'opencode');
+  it('returns UpdateResult with cachePaths (plural, array) and instruction', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
 
     const fs = makeFakeFs({
-      [opencodePath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
+      [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@1.0.0'] }),
     }, [cfgDir]);
 
     const fakeEnv = makeFakeEnv();
-    const console_ = makeConsole();
+    const logs: string[] = [];
 
-    const result = await runUpdate(
+    const result = (await runUpdate(
       fs,
       fakeEnv,
-      logFn(console_.logs),
-      logFn(console_.errors),
-      { latestVersion: '2.0.0' },
-    ) as UpdateResult;
+      logFn(logs),
+      () => {},
+      { latestVersion: '2.0.0', spawn: makeFakeSpawn().spawn },
+    )) as UpdateResult;
 
     expect(result.status).toBeDefined();
-    expect(result.cachePath).toBeDefined();
-    expect(typeof result.cachePath).toBe('string');
-    expect(result.instruction).toBeDefined();
+    expect(Array.isArray(result.cachePaths)).toBe(true);
+    expect(result.cachePaths.length).toBeGreaterThan(0);
+    // Every path lives under ~/.cache/opencode/packages/.
+    for (const p of result.cachePaths) {
+      expect(p).toContain('.cache/opencode/packages/');
+    }
+    expect(typeof result.instruction).toBe('string');
   });
 
-  it('cachePath points to the expected cache directory', async () => {
-    const home = homedir();
-    const cfgDir = resolve(home, '.config', 'opencode');
+  it('legacy "plugins" field is still honored for installed version lookup', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
     const opencodePath = resolve(cfgDir, 'opencode.json');
 
     const fs = makeFakeFs({
+      // A user upgrading from the old buggy `omd install` would have this.
       [opencodePath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
     }, [cfgDir]);
 
     const fakeEnv = makeFakeEnv();
-    const console_ = makeConsole();
+    const logs: string[] = [];
 
-    const result = await runUpdate(
+    // The installed version from the legacy field should still trigger stale detection.
+    const result = (await runUpdate(
       fs,
       fakeEnv,
-      logFn(console_.logs),
-      logFn(console_.errors),
-      { latestVersion: '2.0.0' },
-    ) as UpdateResult;
-
-    const expectedCachePath = resolve(home, '.cache', 'opencode', 'node_modules', 'opencode-rules-md');
-    expect(result.cachePath).toBe(expectedCachePath);
-  });
-
-  it('instruction contains npx opencode-rules-md@latest install when stale', async () => {
-    const home = homedir();
-    const cfgDir = resolve(home, '.config', 'opencode');
-    const opencodePath = resolve(cfgDir, 'opencode.json');
-    const tuiPath = resolve(cfgDir, 'tui.json');
-    const cacheDir = resolve(home, '.cache', 'opencode', 'node_modules', 'opencode-rules-md');
-
-    const fs = makeFakeFs({
-      [opencodePath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
-      [tuiPath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
-    }, [
-      resolve(home, '.cache', 'opencode', 'node_modules'),
-      cacheDir,
-    ]);
-
-    const fakeEnv = makeFakeEnv();
-    const console_ = makeConsole();
-
-    const result = await runUpdate(
-      fs,
-      fakeEnv,
-      logFn(console_.logs),
-      logFn(console_.errors),
-      { latestVersion: '2.0.0' },
-    ) as UpdateResult;
-
-    expect(result.instruction).toContain('npx opencode-rules-md@latest install');
-  });
-
-  it('purges cache and prints instruction when installed version is older', async () => {
-    const home = homedir();
-    const cfgDir = resolve(home, '.config', 'opencode');
-    const opencodePath = resolve(cfgDir, 'opencode.json');
-    const tuiPath = resolve(cfgDir, 'tui.json');
-    const cacheDir = resolve(home, '.cache', 'opencode', 'node_modules', 'opencode-rules-md');
-    const cacheFile = resolve(cacheDir, 'index.js');
-
-    const fs = makeFakeFs({
-      [opencodePath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
-      [tuiPath]: JSON.stringify({ plugins: ['opencode-rules-md@1.0.0'] }),
-      [cacheFile]: '// old version',
-    }, [
-      resolve(home, '.cache', 'opencode', 'node_modules'),
-      cacheDir,
-    ]);
-
-    const fakeEnv = makeFakeEnv();
-    const console_ = makeConsole();
-
-    // latest > installed
-    const result = await runUpdate(
-      fs,
-      fakeEnv,
-      logFn(console_.logs),
-      logFn(console_.errors),
-      { latestVersion: '2.0.0' },
-    ) as UpdateResult;
+      logFn(logs),
+      () => {},
+      { latestVersion: '2.0.0', spawn: makeFakeSpawn().spawn },
+    )) as UpdateResult;
 
     expect(result.status).toBe('stale');
-    expect(fs.existsSync(cacheDir)).toBe(false);
-    expect(console_.logs.some(l => l.includes('npx opencode-rules-md@latest install'))).toBe(true);
+  });
+
+  it('purges multiple matching cache directories (bare + @latest)', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+    const packagesDir = resolve(FAKE_HOME, '.cache', 'opencode', 'packages');
+    const cacheDir1 = resolve(packagesDir, 'opencode-rules-md');
+    const cacheDir2 = resolve(packagesDir, 'opencode-rules-md@latest');
+    const cacheDir3 = resolve(packagesDir, 'opencode-rules-md@1.0.0');
+
+    const fs = makeFakeFs({
+      [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@1.0.0'] }),
+      [resolve(cacheDir1, 'package.json')]: '{}',
+      [resolve(cacheDir2, 'package.json')]: '{}',
+      [resolve(cacheDir3, 'package.json')]: '{}',
+    }, [packagesDir, cacheDir1, cacheDir2, cacheDir3]);
+
+    const fakeEnv = makeFakeEnv();
+    const logs: string[] = [];
+    const fake = makeFakeSpawn();
+
+    await runUpdate(
+      fs,
+      fakeEnv,
+      logFn(logs),
+      () => {},
+      { latestVersion: '2.0.0', spawn: fake.spawn },
+    );
+
+    // All three matching dirs should be gone (the unrelated plugin dir would still be here).
+    expect(fs.existsSync(cacheDir1)).toBe(false);
+    expect(fs.existsSync(cacheDir2)).toBe(false);
+    expect(fs.existsSync(cacheDir3)).toBe(false);
+  });
+
+  it('throws when spawn exits non-zero', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+    const packagesDir = resolve(FAKE_HOME, '.cache', 'opencode', 'packages');
+    const cacheDir = resolve(packagesDir, 'opencode-rules-md@latest');
+
+    const fs = makeFakeFs({
+      [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@1.0.0'] }),
+      [resolve(cacheDir, 'package.json')]: '{}',
+    }, [packagesDir, cacheDir]);
+
+    const fakeEnv = makeFakeEnv();
+    const fake = makeFakeSpawn({ status: 3, stdout: '', stderr: 'boom' });
+
+    await expect(
+      runUpdate(
+        fs,
+        fakeEnv,
+        () => {},
+        () => {},
+        { latestVersion: '2.0.0', spawn: fake.spawn },
+      ),
+    ).rejects.toThrow(/status 3/);
+  });
+
+  it('treats no installed version as stale', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+
+    const fs = makeFakeFs({
+      [opencodePath]: JSON.stringify({ plugin: [] }),
+    }, [cfgDir]);
+
+    const fakeEnv = makeFakeEnv();
+    const logs: string[] = [];
+    const fake = makeFakeSpawn();
+
+    const result = (await runUpdate(
+      fs,
+      fakeEnv,
+      logFn(logs),
+      () => {},
+      { latestVersion: '2.0.0', spawn: fake.spawn },
+    )) as UpdateResult;
+
+    expect(result.status).toBe('stale');
+    expect(fake.calls).toHaveLength(1);
   });
 });

@@ -1,211 +1,103 @@
 // ---------------------------------------------------------------------------
 // src/cli/install.ts — `omd install` command implementation.
 //
-// Dual-config install loop: iterates over ["opencode", "tui"], loads each
-// config, normalizes + deduplicates the plugin list, appends the fresh
-// specifier, and writes atomically with a timestamped backup. When the version
-// is omitted or "latest", the latest published npm version is resolved so the
-// written specifier matches the concrete version (important for accurate
-// update checks) and any stale local cache can be purged.
+// `omd install` is a thin convenience wrapper around OpenCode's own
+// `opencode plugin <specifier> --global` command. OpenCode handles the
+// correct config field name (`plugin`, singular), manifest reading, and
+// cache placement under ~/.cache/opencode/packages/. We no longer edit
+// opencode.json or tui.json directly — duplicating that logic was the
+// source of the original bug (we wrote `plugins` plural, which OpenCode
+// silently ignored).
+//
+// The bare specifier `opencode-rules-md` (no `@latest`) is intentional:
+// it lets OpenCode resolve and refresh the package on every invocation
+// without us pinning to a stale version literal.
 // ---------------------------------------------------------------------------
 
-import { dirname, join } from 'path';
-import {
-  PLUGIN_NAME,
-  loadGlobalConfig,
-  matchesPlugin,
-  normalizePlugin,
-  backupIfWritable,
-  rotateBackups,
-  writeAtomically,
-  type CliFs,
-} from './config.js';
-import { fetchLatestVersion } from './registry.js';
-import { purgeDirectory, resolveCachePath } from './update.js';
+import { spawnOpencodePlugin } from './spawn.js';
+import type { CliFs } from './config.js';
+import { PLUGIN_NAME } from './config.js';
 
-export const CONFIG_BASENAMES = ['opencode', 'tui'] as const;
+/** Default base specifier used when the caller does not pin a version. */
+export const DEFAULT_SPECIFIER = PLUGIN_NAME;
 
 export interface InstallOptions {
+  /** Pin to a specific version, e.g. `"2.0.0"`. Falsy means "use the bare specifier". */
   version?: string;
+  /** Run the full pipeline without spawning the child process. */
   dryRun?: boolean;
+  /** Reserved for future prompts — currently a no-op. */
   yes?: boolean;
-  /**
-   * Optional injection point for tests: pretend the npm registry returned this
-   * version when the requested version is "latest" or unset. When omitted,
-   * `fetchLatestVersion()` is called against the real npm registry.
-   */
+  /** Test hook for resolving the latest version (kept for API compatibility). */
   latestVersion?: string | undefined;
-}
-
-export interface InstallResultPerFile {
-  path: string;
-  status: 'wrote' | 'skipped' | 'error';
-  backup: string | null;
+  /**
+   * Test seam: replaces spawnOpencodePlugin. Defaults to the real CLI wrapper.
+   * Pass an object with a compatible signature to assert on calls.
+   */
+  spawn?: typeof spawnOpencodePlugin;
 }
 
 export interface InstallResult {
+  /** Whether we actually invoked the opencode CLI. */
   status: 'wrote' | 'skipped';
-  results: InstallResultPerFile[];
-  /** True when a stale local cache directory was purged after writing. */
-  purged?: boolean;
+  /** The specifier passed to `opencode plugin`. Useful for logging. */
+  specifier: string;
 }
 
 /**
- * Resolve the concrete version to write.
+ * Build the specifier to pass to `opencode plugin`.
  *
- * - If the user supplied an explicit version (not "latest" and not empty), use
- *   it unchanged.
- * - Otherwise, ask the npm registry for the latest published version.
- * - If the registry is unreachable, fall back to the literal "@latest" tag so
- *   the install command never hard-fails due to network issues. This preserves
- *   the previous behavior while still allowing the cache check to compare when
- *   a concrete version is known.
+ * Rules:
+ *   - Empty / unset version  → bare `opencode-rules-md` (lets OpenCode refresh).
+ *   - Any other value        → `opencode-rules-md@<version>` (pins the install).
  */
-async function resolveVersion(opts: InstallOptions): Promise<string> {
-  const raw = opts.version?.trim() ?? '';
-  const wantsLatest = raw === '' || raw === 'latest';
-
-  if (!wantsLatest) {
-    return raw;
+export function buildSpecifier(version: string | undefined): string {
+  const trimmed = version?.trim() ?? '';
+  if (!trimmed || trimmed === 'latest') {
+    return DEFAULT_SPECIFIER;
   }
-
-  // Tests can short-circuit the network call via latestVersion.
-  if (opts.latestVersion !== undefined) {
-    return opts.latestVersion;
-  }
-
-  const latest = await fetchLatestVersion();
-  return latest ?? 'latest';
+  return `${PLUGIN_NAME}@${trimmed}`;
 }
 
 /**
- * Read the version field from a cached package.json, if present.
- * Returns null when the file is missing or unreadable.
- */
-function readCacheVersion(fs: CliFs, cachePath: string): string | null {
-  const pkgPath = join(cachePath, 'package.json');
-  try {
-    if (!fs.existsSync(pkgPath)) {
-      return null;
-    }
-    const pkg = JSON.parse(fs.readFileSync(pkgPath)) as { version?: unknown };
-    return typeof pkg.version === 'string' ? pkg.version : null;
-  } catch {
-    // A broken cache is treated as "version unknown" so it gets purged.
-    return null;
-  }
-}
-
-/**
- * Purge the local cache directory when it is stale relative to the version we
- * just installed. If the cache version cannot be determined, we err on the
- * side of purging so the next npx invocation fetches a fresh copy.
- */
-function purgeCacheIfStale(
-  fs: CliFs,
-  env: NodeJS.ProcessEnv,
-  resolvedVersion: string,
-): boolean {
-  // The literal "latest" tag is not a comparable version; we only purge when
-  // we have a concrete resolved version to compare against.
-  if (resolvedVersion === 'latest') {
-    return false;
-  }
-
-  const cachePath = resolveCachePath(env);
-  if (!fs.existsSync(cachePath)) {
-    return false;
-  }
-
-  const cacheVersion = readCacheVersion(fs, cachePath);
-  if (cacheVersion === null || cacheVersion !== resolvedVersion) {
-    purgeDirectory(fs, cachePath);
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Install opencode-rules-md into both opencode.json and tui.json configs.
+ * Install opencode-rules-md via OpenCode's own plugin command.
  *
  * Options:
- *   version    — npm version specifier (default: latest from registry)
- *   dryRun     — run full pipeline without writing to disk
- *   yes        — accepted for future prompts, no-op here
- *   latestVersion — test hook for the resolved latest version
+ *   version    — optional npm version pin
+ *   dryRun     — print the would-be command and skip the spawn
+ *   yes        — reserved
+ *
+ * Returns:
+ *   { status: 'skipped', specifier } when dryRun is true
+ *   { status: 'wrote',   specifier } on a clean exit
+ *
+ * Throws on non-zero exit, so the caller (main.ts) can map it to a CLI
+ * failure without us swallowing the error.
  */
 export const runInstall = async (
   opts: InstallOptions = {},
-  fs: CliFs,
-  env: NodeJS.ProcessEnv,
+  // The next two parameters are kept for API compatibility with main.ts.
+  // `omd install` no longer reads or writes the user's config files directly,
+  // so fs/env are no longer consulted here.
+  _fs?: CliFs,
+  env?: NodeJS.ProcessEnv,
 ): Promise<InstallResult> => {
-  const resolvedVersion = await resolveVersion(opts);
-  const freshEntry = `${PLUGIN_NAME}@${resolvedVersion}`;
-  const results: InstallResultPerFile[] = [];
-  let anyProcessed = false;
+  const specifier = buildSpecifier(opts.version);
+  const spawnFn = opts.spawn ?? spawnOpencodePlugin;
+  const targetEnv = env ?? process.env;
 
-  for (const basename of CONFIG_BASENAMES) {
-    const loaded = loadGlobalConfig(fs, env, basename);
-    const plugins = normalizePlugin(loaded.data['plugins']);
-
-    // Find existing entry for this plugin
-    const existingEntry = plugins.find(p => matchesPlugin(p));
-
-    // No-op if the same specifier is already installed
-    if (existingEntry === freshEntry) {
-      results.push({ path: loaded.path, status: 'skipped', backup: null });
-      continue;
-    }
-
-    anyProcessed = true;
-
-    // Build the new plugin list: remove all matching entries, append fresh specifier.
-    // Existing non-matching plugins are preserved in their original order.
-    const withoutStale = plugins.filter(p => !matchesPlugin(p));
-    const newPlugins = [...withoutStale, freshEntry];
-
-    const newData = { ...loaded.data, plugins: newPlugins };
-    const newContent = JSON.stringify(newData, null, 2) + '\n';
-
-    if (opts.dryRun) {
-      results.push({ path: loaded.path, status: 'wrote', backup: null });
-      continue;
-    }
-
-    // Backup the existing file if it exists
-    let backup: string | undefined;
-    if (loaded.exists) {
-      backup = backupIfWritable(fs, loaded.path);
-      if (backup !== undefined) {
-        const dir = dirname(loaded.path);
-        const segs = loaded.path.replace(/\\/g, '/').split('/');
-        const base = segs[segs.length - 1] ?? loaded.path;
-        const dot = base.lastIndexOf('.');
-        const name = dot >= 0 ? base.slice(0, dot) : base;
-        rotateBackups(fs, dir, name, 3);
-      }
-    }
-
-    writeAtomically(fs, loaded.path, newContent);
-    results.push({
-      path: loaded.path,
-      status: 'wrote',
-      backup: backup ?? null,
-    });
+  if (opts.dryRun) {
+    console.log(`omd: would run: opencode plugin ${specifier} --global`);
+    return { status: 'skipped', specifier };
   }
 
-  // After writing the configs, purge a stale local cache so the next run of the
-  // plugin starts from the version we just registered. In dry-run mode we
-  // never touch the filesystem.
-  let purged = false;
-  if (!opts.dryRun) {
-    purged = purgeCacheIfStale(fs, env, resolvedVersion);
+  const result = await spawnFn([specifier, '--global'], { env: targetEnv, stdio: 'inherit' });
+
+  if ((result.status ?? 0) !== 0) {
+    throw new Error(
+      `opencode plugin ${specifier} --global exited with status ${String(result.status)}`,
+    );
   }
 
-  return {
-    status: anyProcessed ? 'wrote' : 'skipped',
-    results,
-    purged,
-  };
+  return { status: 'wrote', specifier };
 };

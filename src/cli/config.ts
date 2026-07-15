@@ -239,6 +239,22 @@ export function normalizePlugin(raw: unknown): string[] {
   return [];
 }
 
+/**
+ * Read the installed plugin list from a loaded config, honoring both the
+ * modern `plugin` field (singular — what OpenCode actually uses) and the
+ * legacy `plugins` field (plural — written by older versions of `omd`).
+ *
+ * The modern field wins when both are present, matching OpenCode's own
+ * resolution order.
+ */
+export function readInstalledPlugins(config: GlobalConfig): string[] {
+  const modern = config.data['plugin'];
+  if (modern !== undefined) {
+    return normalizePlugin(modern);
+  }
+  return normalizePlugin(config.data['plugins']);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // matchesPlugin
 // ─────────────────────────────────────────────────────────────────────────────
@@ -311,6 +327,9 @@ export interface GlobalConfig {
   exists: boolean;
   data: Record<string, unknown>;
 }
+
+/** Backwards-compatible alias used by update.ts / status.ts. */
+export type LoadedConfig = GlobalConfig;
 
 /**
  * Load and parse a global config file.

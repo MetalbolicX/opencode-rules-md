@@ -22,17 +22,17 @@ Usage:
   omd [command] [options]
 
 Commands:
-  install   Register opencode-rules-md in both opencode.json and tui.json
-  uninstall Remove opencode-rules-md from both configs
-  status    Show installed plugin state for each config
-  doctor    Run health checks for the plugin environment
-  update    Check for new versions and purge stale cache
+  install    Register opencode-rules-md via OpenCode's plugin command
+  uninstall  Remove opencode-rules-md from both configs and cache
+  status     Show installed plugin state for each config
+  doctor     Run health checks for the plugin environment
+  update     Check for new versions and refresh the install via OpenCode
 
 Options:
   --dry-run    Show what would be changed without writing
   --version    Pin to a specific version (install only)
   --latest     Use the latest version (install only)
-  --purge      Also remove ~/.cache/opencode/node_modules/opencode-rules-md (uninstall only)
+  --purge      Also remove ~/.cache/opencode/packages/opencode-rules-md* (uninstall only)
   --yes        Accept all prompts automatically
 
 Examples:
@@ -141,6 +141,11 @@ export interface MainOptions {
    * version when "latest" is requested by install or update.
    */
   latestVersion?: string;
+  /**
+   * Test seam: replace the `spawnOpencodePlugin` function. Lets tests verify
+   * which CLI args the installer would have invoked without touching disk.
+   */
+  spawn?: typeof import('./spawn.js').spawnOpencodePlugin;
 }
 
 export const runMain = async (
@@ -180,12 +185,12 @@ export const runMain = async (
         argv.indexOf('install') + 1 || argv.indexOf(resolvedCommand) + 1,
       );
       const { values } = parseArgs({
-        argv: remaining,
+        args: remaining,
         allowPositionals: true,
         strict: false,
         options: {
           'dry-run': { type: 'boolean', default: false },
-          version: { type: 'string', default: undefined },
+          version: { type: 'string', default: '' },
           latest: { type: 'boolean', default: false },
           yes: { type: 'boolean', default: false },
         },
@@ -195,29 +200,21 @@ export const runMain = async (
         dryRun: Boolean(values['dry-run']),
         yes: Boolean(values['yes']),
         latestVersion: opts.latestVersion,
+        ...(opts.spawn ? { spawn: opts.spawn } : {}),
       };
       const result = await runInstall(installOpts, fs, env);
       if (result.status === 'skipped') {
-        stdout('omd: already installed (no changes needed)');
+        stdout(`omd: install skipped (dry-run) — would run: opencode plugin ${result.specifier} --global`);
         return 0;
       }
-      for (const r of result.results) {
-        if (r.status === 'wrote') {
-          stdout(`omd: registered in ${r.path}`);
-        } else if (r.status === 'skipped') {
-          stdout(`omd: ${r.path} — already up to date`);
-        }
-      }
-      if (result.purged) {
-        stdout('omd: cache purged');
-      }
+      stdout(`omd: installed via opencode plugin ${result.specifier} --global`);
       return 0;
     }
 
     case 'uninstall': {
       const remaining = argv.slice(argv.indexOf(resolvedCommand) + 1);
       const { values } = parseArgs({
-        argv: remaining,
+        args: remaining,
         allowPositionals: true,
         strict: false,
         options: {
@@ -250,7 +247,7 @@ export const runMain = async (
     }
 
     case 'status': {
-      await runStatus(fs, env, stdout);
+      await runStatus(fs, env, stdout, opts.latestVersion !== undefined ? { latestVersion: opts.latestVersion } : {});
       return 0;
     }
 
@@ -262,7 +259,7 @@ export const runMain = async (
     case 'update': {
       const remaining = argv.slice(argv.indexOf(resolvedCommand) + 1);
       const { values } = parseArgs({
-        argv: remaining,
+        args: remaining,
         allowPositionals: true,
         strict: false,
         options: {
@@ -270,9 +267,21 @@ export const runMain = async (
         },
       });
       const dryRun = Boolean(values['dry-run']);
-      const updateResult = await runUpdate(fs, env, stdout, stderr, { dryRun, latestVersion: opts.latestVersion });
-      if (updateResult.status === 'current') {
-        stdout('omd: already at latest version');
+      const updateResult = await runUpdate(fs, env, stdout, stderr, {
+        dryRun,
+        latestVersion: opts.latestVersion,
+        ...(opts.spawn ? { spawn: opts.spawn } : {}),
+      });
+      switch (updateResult.status) {
+        case 'current':
+          stdout('omd: already at latest version');
+          break;
+        case 'unreachable':
+          stderr('omd: could not reach npm registry — try again later');
+          return 1;
+        case 'stale':
+          // runUpdate already logged the purge / reinstall outcome.
+          break;
       }
       return 0;
     }

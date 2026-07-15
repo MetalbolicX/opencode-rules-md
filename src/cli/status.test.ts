@@ -146,6 +146,7 @@ describe('runStatus', () => {
       fs,
       fakeEnv,
       (s: string) => { console_.logs.push(s); },
+      { latestVersion: '2.0.0' },
     ) as StatusResult;
 
     // Should return a structured result with entries for both configs
@@ -169,7 +170,7 @@ describe('runStatus', () => {
     const console_ = makeConsole();
 
     const logFn = (s: string) => { console_.logs.push(s); };
-    const result = await runStatus(fs, fakeEnv, logFn) as StatusResult;
+    const result = await runStatus(fs, fakeEnv, logFn, { latestVersion: '2.0.0' }) as StatusResult;
 
     const configs = result.configs as ConfigEntry[];
     const opencodeEntry = configs.find(e => e.basename === 'opencode');
@@ -194,7 +195,7 @@ describe('runStatus', () => {
     const console_ = makeConsole();
 
     const logFn = (s: string) => { console_.logs.push(s); };
-    const result = await runStatus(fs, fakeEnv, logFn) as StatusResult;
+    const result = await runStatus(fs, fakeEnv, logFn, { latestVersion: '2.0.0' }) as StatusResult;
 
     const configs = result.configs as ConfigEntry[];
     const opencodeEntry = configs.find(e => e.basename === 'opencode');
@@ -217,7 +218,7 @@ describe('runStatus', () => {
     const console_ = makeConsole();
 
     const logFn = (s: string) => { console_.logs.push(s); };
-    const result = await runStatus(fs, fakeEnv, logFn) as StatusResult;
+    const result = await runStatus(fs, fakeEnv, logFn, { latestVersion: '2.0.0' }) as StatusResult;
 
     const configs = result.configs as ConfigEntry[];
     const opencodeEntry = configs.find(e => e.basename === 'opencode');
@@ -237,7 +238,7 @@ describe('runStatus', () => {
     const console_ = makeConsole();
 
     const logFn = (s: string) => { console_.logs.push(s); };
-    const result = await runStatus(fs, fakeEnv, logFn) as StatusResult;
+    const result = await runStatus(fs, fakeEnv, logFn, { latestVersion: '2.0.0' }) as StatusResult;
 
     const configs = result.configs as ConfigEntry[];
     const opencodeEntry = configs.find(e => e.basename === 'opencode');
@@ -258,7 +259,7 @@ describe('runStatus', () => {
     const console_ = makeConsole();
 
     const logFn = (s: string) => { console_.logs.push(s); };
-    const result = await runStatus(fs, fakeEnv, logFn) as StatusResult;
+    const result = await runStatus(fs, fakeEnv, logFn, { latestVersion: '2.0.0' }) as StatusResult;
 
     const configs = result.configs as ConfigEntry[];
     const tuiEntry = configs.find(e => e.basename === 'tui');
@@ -281,7 +282,7 @@ describe('runStatus', () => {
     // Capture file map keys before
     const beforeKeys = [...fs.readdirSync(cfgDir)];
 
-    await runStatus(fs, fakeEnv, (s: string) => { console_.logs.push(s); });
+    await runStatus(fs, fakeEnv, (s: string) => { console_.logs.push(s); }, { latestVersion: '2.0.0' });
 
     const afterKeys = [...fs.readdirSync(cfgDir)];
     // No files added or removed
@@ -306,7 +307,7 @@ describe('runStatus', () => {
     const fakeEnv = makeFakeEnv();
     const console_ = makeConsole();
 
-    await runStatus(fs, fakeEnv, (s: string) => { console_.logs.push(s); });
+    await runStatus(fs, fakeEnv, (s: string) => { console_.logs.push(s); }, { latestVersion: '2.0.0' });
 
     // Should have produced some console output
     expect(console_.logs.length).toBeGreaterThan(0);
