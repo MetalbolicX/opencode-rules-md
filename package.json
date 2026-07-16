@@ -22,8 +22,9 @@
     "format": "prettier --write 'src/**/*.ts' 'tui/**/*.tsx' 'tui/**/*.ts'",
     "format:check": "prettier --check 'src/**/*.ts' 'tui/**/*.tsx' 'tui/**/*.ts'",
     "clean": "rm -rf dist",
-    "prepublishOnly": "bun run clean && bun run build"
+    "prepublishOnly": "pnpm run clean && pnpm run build"
   },
+  "packageManager": "pnpm@11.12.0",
   "keywords": [
     "opencode",
     "plugin",
@@ -87,25 +88,22 @@
     }
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.3.9",
-    "@opencode-ai/sdk": "^1.3.9",
-    "@opentui/core": "^0.4.3",
-    "@opentui/solid": "^0.4.3",
-    "@types/minimatch": "^5.1.2",
-    "@types/node": "^20.19.30",
-    "@typescript-eslint/eslint-plugin": "^8.63.0",
-    "@typescript-eslint/parser": "^8.63.0",
-    "eslint": "^10.6.0",
-    "prettier": "^3.8.1",
-    "solid-js": "1.9.14",
-    "typescript": "^5.9.3",
-    "vitest": "^2.1.8"
+    "@opencode-ai/plugin": "^1.18.2",
+    "@opencode-ai/sdk": "^1.18.2",
+    "@types/minimatch": "^6.0.0",
+    "@types/node": "^26.1.1",
+    "@typescript-eslint/eslint-plugin": "^8.64.0",
+    "@typescript-eslint/parser": "^8.64.0",
+    "eslint": "^10.7.0",
+    "prettier": "^3.9.5",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@opentui/core": "^0.4.3",
     "@opentui/solid": "^0.4.3",
-    "minimatch": "^9.0.5",
-    "solid-js": "^1.9.12",
-    "yaml": "^2.8.2"
+    "minimatch": "^10.2.5",
+    "solid-js": "^1.9.14",
+    "yaml": "^2.9.0"
   }
 }
