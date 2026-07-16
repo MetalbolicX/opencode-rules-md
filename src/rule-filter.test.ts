@@ -140,6 +140,115 @@ describe('readAndFormatRules', () => {
     });
   });
 
+  describe('content deduplication', () => {
+    it('collapses exact duplicate bodies into one entry', async () => {
+      const rule1 = writeRule('first.md', 'identical body content');
+      const rule2 = writeRule('second.md', 'identical body content');
+      const result = await readAndFormatRules([rule1, rule2]);
+      // Only one survivor despite two files with identical strippedContent
+      expect(result.matchedPaths).toHaveLength(1);
+      expect(result.formattedRules).not.toContain('## first.md\n\nidentical body content\n\n---\n\n## second.md\n\nidentical body content');
+    });
+
+    it('collapses duplicates with and without maxTokens', async () => {
+      const rule1 = writeRule('a.md', 'same body');
+      const rule2 = writeRule('b.md', 'same body');
+      const rule3 = writeRule('c.md', 'same body');
+      // Without budget
+      const noBudget = await readAndFormatRules([rule1, rule2, rule3]);
+      expect(noBudget.matchedPaths).toHaveLength(1);
+      // With budget (should still dedup before budget selection)
+      const withBudget = await readAndFormatRules([rule1, rule2, rule3], {
+        maxTokens: 1000,
+      });
+      expect(withBudget.matchedPaths).toHaveLength(1);
+    });
+
+    it('higher priority wins on duplicate content', async () => {
+      const lowPriority = writeRule('low.md', '---\npriority: 1\n---\nshared body');
+      const highPriority = writeRule('high.md', '---\npriority: 10\n---\nshared body');
+      const result = await readAndFormatRules([lowPriority, highPriority]);
+      // Higher priority survivor is retained
+      expect(result.formattedRules).toContain('## high.md');
+      expect(result.formattedRules).not.toContain('## low.md');
+      expect(result.matchedPaths).toHaveLength(1);
+    });
+
+    it('equal priority — later-discovered entry wins on duplicate content', async () => {
+      const first = writeRule('first.md', '---\npriority: 5\n---\nshared body');
+      const second = writeRule('second.md', '---\npriority: 5\n---\nshared body');
+      const result = await readAndFormatRules([first, second]);
+      // Later discovery index wins when priority is equal
+      expect(result.formattedRules).toContain('## second.md');
+      expect(result.formattedRules).not.toContain('## first.md');
+      expect(result.matchedPaths).toHaveLength(1);
+    });
+
+    it('empty strippedContent bodies collapse into one survivor', async () => {
+      const rule1 = writeRule('empty1.md', '---\npriority: 3\n---\n');
+      const rule2 = writeRule('empty2.md', '---\npriority: 2\n---\n');
+      const result = await readAndFormatRules([rule1, rule2]);
+      // Both have empty strippedContent, only one survives
+      expect(result.matchedPaths).toHaveLength(1);
+    });
+
+    it('distinct bodies pass through without deduplication', async () => {
+      const rule1 = writeRule('a.md', 'unique body A');
+      const rule2 = writeRule('b.md', 'unique body B');
+      const rule3 = writeRule('c.md', 'unique body C');
+      const result = await readAndFormatRules([rule1, rule2, rule3]);
+      // All three distinct bodies survive
+      expect(result.matchedPaths).toHaveLength(3);
+      expect(result.formattedRules).toContain('## a.md');
+      expect(result.formattedRules).toContain('## b.md');
+      expect(result.formattedRules).toContain('## c.md');
+    });
+
+    it('survivor order preserves discovery order after deduplication', async () => {
+      const ruleA = writeRule('a.md', 'body A');
+      const ruleB = writeRule('b.md', 'shared body');
+      const ruleC = writeRule('c.md', 'shared body');
+      const result = await readAndFormatRules([ruleA, ruleB, ruleC]);
+      // A is unique, B and C are duplicate — C (higher index) wins for the duplicate pair
+      // Final order should be A then C (discovery order preserved)
+      const bIndex = result.formattedRules.indexOf('## b.md');
+      const cIndex = result.formattedRules.indexOf('## c.md');
+      const aIndex = result.formattedRules.indexOf('## a.md');
+      // C should appear (it won the duplicate), B should not
+      expect(result.formattedRules).toContain('## c.md');
+      expect(result.formattedRules).not.toContain('## b.md');
+      // A should appear before C
+      expect(aIndex).toBeLessThan(cIndex);
+    });
+
+    it('always-on — deduplication applies with and without maxTokens', async () => {
+      const rule1 = writeRule('dup1.md', 'body');
+      const rule2 = writeRule('dup2.md', 'body');
+      // Without budget
+      const noBudget = await readAndFormatRules([rule1, rule2]);
+      expect(noBudget.matchedPaths).toHaveLength(1);
+      // With budget
+      const withBudget = await readAndFormatRules([rule1, rule2], {
+        maxTokens: 1000,
+      });
+      expect(withBudget.matchedPaths).toHaveLength(1);
+      // Without maxTokens context key entirely
+      const noContext = await readAndFormatRules([rule1, rule2], {});
+      expect(noContext.matchedPaths).toHaveLength(1);
+    });
+
+    it('deduplication reduces tokenEstimate vs keeping all duplicates', async () => {
+      const rule1 = writeRule('dup-a.md', 'large duplicate body content here');
+      const rule2 = writeRule('dup-b.md', 'large duplicate body content here');
+      const result = await readAndFormatRules([rule1, rule2]);
+      // Only one entry in output, so tokenEstimate is for one entry, not two
+      expect(result.matchedPaths).toHaveLength(1);
+      // A single identical body would produce lower tokenEstimate than two copies
+      const singleResult = await readAndFormatRules([rule1]);
+      expect(result.tokenEstimate).toBe(singleResult.tokenEstimate);
+    });
+  });
+
   describe('token budget', () => {
     it('keeps all rules when no maxTokens is set (discovery order preserved)', async () => {
       const rule1 = writeRule('a.md', 'body-a');
@@ -233,10 +342,10 @@ describe('readAndFormatRules', () => {
     });
 
     it('respects priority desc + index asc ordering', async () => {
-      const rule1 = writeRule('p5-first.md', '---\npriority: 5\n---\nbody');
-      const rule2 = writeRule('p5-second.md', '---\npriority: 5\n---\nbody');
-      const rule3 = writeRule('p3.md', '---\npriority: 3\n---\nbody');
-      const rule4 = writeRule('p10.md', '---\npriority: 10\n---\nbody');
+      const rule1 = writeRule('p5-first.md', '---\npriority: 5\n---\nA');
+      const rule2 = writeRule('p5-second.md', '---\npriority: 5\n---\nB');
+      const rule3 = writeRule('p3.md', '---\npriority: 3\n---\nC');
+      const rule4 = writeRule('p10.md', '---\npriority: 10\n---\nD');
       // Budget ~10 tokens: fits p10 (priority 10) and p5-first (priority 5) but not p5-second or p3
       // estimateTokens("## pX.md\n\nbody") ≈ ceil(18/4) = 5 tokens each
       const result = await readAndFormatRules(

@@ -287,6 +287,35 @@ export async function readAndFormatRules(
     return { formattedRules: '', matchedPaths: [], tokenEstimate: 0 };
   }
 
+  // Content-based deduplication: collapse entries with identical strippedContent
+  // Higher priority wins; on equal priority, higher index (later-discovered) wins
+  const dedupedMap = new Map<string, MatchedEntry>();
+  for (const entry of entries) {
+    const existing = dedupedMap.get(entry.strippedContent);
+    if (!existing) {
+      dedupedMap.set(entry.strippedContent, entry);
+    } else {
+      const replace =
+        entry.priority > existing.priority ||
+        (entry.priority === existing.priority && entry.index > existing.index);
+      if (replace) {
+        debugLog(
+          `Deduplicating rule content: ${existing.relativePath} -> ${entry.relativePath} (shared content)`
+        );
+        dedupedMap.set(entry.strippedContent, entry);
+      } else {
+        debugLog(
+          `Deduplicating rule content: ${entry.relativePath} -> ${existing.relativePath} (shared content)`
+        );
+      }
+    }
+  }
+
+  // Sort survivors by discovery order (index ascending) before budget selection
+  const deduplicatedEntries = [...dedupedMap.values()].sort(
+    (a, b) => a.index - b.index
+  );
+
   // Determine which entries to include based on budget
   const maxTokens = context.maxTokens;
   const hasValidBudget = typeof maxTokens === 'number' && maxTokens > 0 && Number.isFinite(maxTokens);
@@ -294,10 +323,10 @@ export async function readAndFormatRules(
   let survivors: MatchedEntry[];
   if (!hasValidBudget) {
     // No budget: use discovery order (existing behavior)
-    survivors = entries;
+    survivors = deduplicatedEntries;
   } else {
     // Valid budget: stable sort by priority desc, index asc
-    const sorted = [...entries].sort((a, b) =>
+    const sorted = [...deduplicatedEntries].sort((a, b) =>
       (b.priority - a.priority) || (a.index - b.index)
     );
 
