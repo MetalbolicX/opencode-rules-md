@@ -19,6 +19,8 @@ export interface RuleMetadata {
   os?: string[];
   ci?: boolean;
   match?: 'any' | 'all';
+  /** Higher priority is kept first when a token budget is enforced. Default 0. */
+  priority?: number;
 }
 
 /**
@@ -36,6 +38,7 @@ interface ParsedFrontmatter {
   os?: unknown;
   ci?: unknown;
   match?: unknown;
+  priority?: unknown;
 }
 
 /** Field names in ParsedFrontmatter that are string arrays */
@@ -127,6 +130,11 @@ export function parseRuleMetadata(content: string): RuleMetadata | undefined {
     // Extract match (normalize to 'any' | 'all' only)
     if (parsed.match === 'any' || parsed.match === 'all') {
       metadata.match = parsed.match;
+    }
+
+    // Extract priority (finite numbers only; non-finite or absent becomes undefined, treated as 0 downstream)
+    if (typeof parsed.priority === 'number' && Number.isFinite(parsed.priority)) {
+      metadata.priority = parsed.priority;
     }
 
     // Return metadata only if it has content

@@ -63,6 +63,18 @@ export function detectCiEnvironment(): boolean {
 }
 
 /**
+ * Resolve the active token budget from the OPENCODE_RULES_MAX_TOKENS env var.
+ * Returns undefined when the env var is absent, empty, zero, negative, or non-finite.
+ * Positive finite numbers enable budget enforcement.
+ */
+export function resolveMaxTokens(): number | undefined {
+  const raw = process.env.OPENCODE_RULES_MAX_TOKENS;
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
  * Build the filter context object used for rule matching.
  * Assembles runtime information from various sources.
  */
@@ -124,6 +136,10 @@ export async function buildFilterContext(
   }
   if (gitBranch !== undefined) {
     context.gitBranch = gitBranch;
+  }
+  const maxTokens = resolveMaxTokens();
+  if (maxTokens !== undefined) {
+    context.maxTokens = maxTokens;
   }
 
   debugLog(

@@ -102,6 +102,8 @@ export interface RuleFilterContext {
   os?: string;
   /** Whether running in CI environment */
   ci?: boolean;
+  /** Optional hard token cap; lowest-priority rules are dropped when exceeded. */
+  maxTokens?: number;
 }
 
 /**
@@ -117,12 +119,22 @@ export async function readAndFormatRules(
     return { formattedRules: '', matchedPaths: [], tokenEstimate: 0 };
   }
 
-  const ruleContents: string[] = [];
-  const matchedPaths: string[] = [];
   const availableToolSet =
     context.availableToolIDs && context.availableToolIDs.length > 0
       ? new Set(context.availableToolIDs)
       : undefined;
+
+  // Collect matched entries with priority and token count
+  type MatchedEntry = {
+    filePath: string;
+    relativePath: string;
+    strippedContent: string;
+    priority: number;
+    tokenCount: number;
+    index: number;
+  };
+  const entries: MatchedEntry[] = [];
+  let entryIndex = 0;
 
   for (const { filePath, relativePath } of files) {
     // Use cached rule data with mtime-based invalidation
@@ -261,15 +273,50 @@ export async function readAndFormatRules(
       );
     }
 
-    // Use cached stripped content for output
-    // Use relativePath for unique headings instead of just filename
-    ruleContents.push(`## ${relativePath}\n\n${strippedContent}`);
-    matchedPaths.push(filePath);
+    // Extract priority (default 0 for selection; undefined in metadata means absent)
+    const priority = metadata?.priority ?? 0;
+
+    // Build formatted chunk for token counting
+    const formattedChunk = `## ${relativePath}\n\n${strippedContent}`;
+    const tokenCount = estimateTokens(formattedChunk);
+
+    entries.push({ filePath, relativePath, strippedContent, priority, tokenCount, index: entryIndex++ });
   }
 
-  if (ruleContents.length === 0) {
+  if (entries.length === 0) {
     return { formattedRules: '', matchedPaths: [], tokenEstimate: 0 };
   }
+
+  // Determine which entries to include based on budget
+  const maxTokens = context.maxTokens;
+  const hasValidBudget = typeof maxTokens === 'number' && maxTokens > 0 && Number.isFinite(maxTokens);
+
+  let survivors: MatchedEntry[];
+  if (!hasValidBudget) {
+    // No budget: use discovery order (existing behavior)
+    survivors = entries;
+  } else {
+    // Valid budget: stable sort by priority desc, index asc
+    const sorted = [...entries].sort((a, b) =>
+      (b.priority - a.priority) || (a.index - b.index)
+    );
+
+    // Greedy selection: always keep first (≥1 survivor invariant), then add while within budget
+    survivors = [sorted[0]];
+    let runningTokens = sorted[0].tokenCount;
+    for (let i = 1; i < sorted.length; i++) {
+      if (runningTokens + sorted[i].tokenCount <= maxTokens) {
+        survivors.push(sorted[i]);
+        runningTokens += sorted[i].tokenCount;
+      }
+    }
+  }
+
+  // Build output from survivors
+  const ruleContents = survivors.map(
+    entry => `## ${entry.relativePath}\n\n${entry.strippedContent}`
+  );
+  const matchedPaths = survivors.map(entry => entry.filePath);
 
   const formattedRules =
     `# OpenCode Rules\n\nPlease follow the following rules:\n\n` +
