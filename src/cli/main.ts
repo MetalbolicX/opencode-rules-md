@@ -181,9 +181,9 @@ export const runMain = async (
     switch (resolvedCommand) {
     case 'install': {
       // Remaining argv for parseArgs to extract options
-      const remaining = argv.slice(
-        argv.indexOf('install') + 1 || argv.indexOf(resolvedCommand) + 1,
-      );
+      const installIdx = argv.indexOf('install');
+      const cmdIdx = installIdx >= 0 ? installIdx : argv.indexOf(resolvedCommand);
+      const remaining = argv.slice(cmdIdx + 1);
       const { values } = parseArgs({
         args: remaining,
         allowPositionals: true,

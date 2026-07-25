@@ -412,6 +412,7 @@ describe('runMain command routing', () => {
     const fs = makeFakeFs({
       [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@2.0.0'] }),
       [tuiPath]: JSON.stringify({ plugin: ['opencode-rules-md@2.0.0'] }),
+      ['/home/metalbolicx/.bun/bin/bun']: '',
     }, [cfgDir, parentDir]);
     const fakeEnv = makeFakeEnv({
       HOME: home,

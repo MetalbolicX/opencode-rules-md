@@ -1,3 +1,5 @@
+import { COMPACTING_GRACE_PERIOD_MS } from './constants.js';
+
 export interface SessionState {
   contextPaths: Set<string>;
   lastUserPrompt?: string;
@@ -91,7 +93,7 @@ export class SessionStore {
   shouldSkipInjection(
     sessionID: string,
     nowMs: number,
-    ttlMs = 30_000
+    ttlMs: number = COMPACTING_GRACE_PERIOD_MS
   ): boolean {
     const state = this.stateMap.get(sessionID);
     if (!state?.isCompacting) return false;

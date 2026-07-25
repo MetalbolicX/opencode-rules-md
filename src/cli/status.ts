@@ -19,6 +19,7 @@ import {
   loadGlobalConfig,
   matchesPlugin,
   readInstalledPlugins,
+  findInstalledPlugin,
   type CliFs,
   type LoadedConfig,
 } from './config.js';
@@ -90,7 +91,7 @@ export const runStatus = async (
     const loaded = loadGlobalConfig(fs, env, basename);
     const format = extname(loaded.path) as string; // '.json' or '.jsonc'
     const plugins = readInstalledPlugins(loaded);
-    const match = plugins.find((p) => matchesPlugin(p)) ?? null;
+    const match = findInstalledPlugin(plugins) ?? null;
 
     const entry: StatusEntry = {
       basename,
@@ -169,14 +170,7 @@ export const runDoctor = async (
   let hasBun = opts.hasBun;
   if (hasBun === undefined) {
     const pathEnv = (env.PATH ?? '').split(':');
-    hasBun = pathEnv.some((p) => {
-      try {
-        const { existsSync } = require('node:fs') as typeof import('node:fs');
-        return existsSync(p + '/bun');
-      } catch {
-        return false;
-      }
-    });
+    hasBun = pathEnv.some((p) => fs.existsSync(p + '/bun'));
   }
 
   // ── Check: Node version ───────────────────────────────────────────────────
@@ -211,7 +205,7 @@ export const runDoctor = async (
 
     log(`  ${basename}${extname(loaded.path)}: ${loaded.path}`);
     const plugins = readInstalledPlugins(loaded);
-    const match = plugins.find((p) => matchesPlugin(p)) ?? null;
+    const match = findInstalledPlugin(plugins) ?? null;
 
     if (match) {
       info.push(`${basename}: opencode-rules-md installed (${match})`);

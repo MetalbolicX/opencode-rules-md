@@ -273,6 +273,14 @@ export function matchesPlugin(entry: string, name: string = PLUGIN_NAME): boolea
   return pattern.test(entry);
 }
 
+/**
+ * Find the first plugin entry in `plugins` that matches `PLUGIN_NAME` (with
+ * optional @version). Returns the matching specifier, or undefined if none.
+ */
+export function findInstalledPlugin(plugins: readonly string[]): string | undefined {
+  return plugins.find((p) => matchesPlugin(p));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // dedupePlugins
 // ─────────────────────────────────────────────────────────────────────────────

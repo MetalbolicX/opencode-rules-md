@@ -11,6 +11,8 @@ import {
 } from './message-context.js';
 import { extractConnectedMcpCapabilityIDs } from './mcp-tools.js';
 import { createDebugLog, type DebugLog } from './debug.js';
+import { logWarning } from './log.js';
+import { COMPACTING_GRACE_PERIOD_MS } from './constants.js';
 import type { SessionStore } from './session-store.js';
 import {
   buildFilterContext,
@@ -22,6 +24,9 @@ import {
   type ChatMessageOutput,
 } from './runtime-chat.js';
 import { writeActiveRulesState } from './active-rules-state.js';
+
+/** Cap on context paths surfaced to the compaction context block. */
+const MAX_COMPACTION_PATHS = 20;
 
 interface MessagesTransformOutput {
   messages: MessageWithInfo[];
@@ -187,7 +192,7 @@ export class OpenCodeRulesRuntime {
       const skip = this.sessionStore.shouldSkipInjection(
         sessionID,
         this.now(),
-        30_000
+        COMPACTING_GRACE_PERIOD_MS
       );
       if (skip) {
         this.debugLog(
@@ -291,13 +296,7 @@ export class OpenCodeRulesRuntime {
         `Built-in tools: ${toolResult.value.data.slice(0, 10).join(', ')}${toolResult.value.data.length > 10 ? '...' : ''} (${toolResult.value.data.length} total)`
       );
     } else if (toolResult.status === 'rejected') {
-      const message =
-        toolResult.reason instanceof Error
-          ? toolResult.reason.message
-          : String(toolResult.reason);
-      console.warn(
-        `[opencode-rules-md] Warning: Failed to query tool IDs: ${message}`
-      );
+      logWarning('Failed to query tool IDs', toolResult.reason);
     }
 
     if (mcpResult.status === 'fulfilled' && mcpResult.value?.data) {
@@ -309,13 +308,7 @@ export class OpenCodeRulesRuntime {
         this.debugLog(`MCP capability IDs: ${mcpIds.join(', ')}`);
       }
     } else if (mcpResult.status === 'rejected') {
-      const message =
-        mcpResult.reason instanceof Error
-          ? mcpResult.reason.message
-          : String(mcpResult.reason);
-      console.warn(
-        `[opencode-rules-md] Warning: Failed to query MCP status: ${message}`
-      );
+      logWarning('Failed to query MCP status', mcpResult.reason);
     }
 
     return Array.from(ids);
@@ -344,15 +337,14 @@ export class OpenCodeRulesRuntime {
     const sortedPaths = Array.from(sessionState.contextPaths).sort((a, b) =>
       a.localeCompare(b)
     );
-    const maxPaths = 20;
-    const pathsToInclude = sortedPaths.slice(0, maxPaths);
+    const pathsToInclude = sortedPaths.slice(0, MAX_COMPACTION_PATHS);
 
     const contextString = [
       'OpenCode Rules: Working context',
       'Current file paths in context:',
       ...pathsToInclude.map(p => `  - ${sanitizePathForContext(p)}`),
-      ...(sortedPaths.length > maxPaths
-        ? [`  ... and ${sortedPaths.length - maxPaths} more paths`]
+      ...(sortedPaths.length > MAX_COMPACTION_PATHS
+        ? [`  ... and ${sortedPaths.length - MAX_COMPACTION_PATHS} more paths`]
         : []),
     ].join('\n');
 

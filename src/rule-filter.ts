@@ -8,6 +8,13 @@ import { getCachedRule, type DiscoveredRule } from './rule-discovery.js';
 
 const debugLog = createDebugLog();
 
+/** Header preamble prepended to the formatted rule block. */
+const RULES_HEADER =
+  '# OpenCode Rules\n\nPlease follow the following rules:\n\n';
+
+/** Separator inserted between formatted rule entries. */
+const RULE_SEPARATOR = '\n\n---\n\n';
+
 /**
  * Check if a file path matches any of the given glob patterns
  */
@@ -280,7 +287,14 @@ export async function readAndFormatRules(
     const formattedChunk = `## ${relativePath}\n\n${strippedContent}`;
     const tokenCount = estimateTokens(formattedChunk);
 
-    entries.push({ filePath, relativePath, strippedContent, priority, tokenCount, index: entryIndex++ });
+    entries.push({
+      filePath,
+      relativePath,
+      strippedContent,
+      priority,
+      tokenCount,
+      index: entryIndex++,
+    });
   }
 
   if (entries.length === 0) {
@@ -318,7 +332,10 @@ export async function readAndFormatRules(
 
   // Determine which entries to include based on budget
   const maxTokens = context.maxTokens;
-  const hasValidBudget = typeof maxTokens === 'number' && maxTokens > 0 && Number.isFinite(maxTokens);
+  const hasValidBudget =
+    typeof maxTokens === 'number' &&
+    maxTokens > 0 &&
+    Number.isFinite(maxTokens);
 
   let survivors: MatchedEntry[];
   if (!hasValidBudget) {
@@ -326,8 +343,8 @@ export async function readAndFormatRules(
     survivors = deduplicatedEntries;
   } else {
     // Valid budget: stable sort by priority desc, index asc
-    const sorted = [...deduplicatedEntries].sort((a, b) =>
-      (b.priority - a.priority) || (a.index - b.index)
+    const sorted = [...deduplicatedEntries].sort(
+      (a, b) => b.priority - a.priority || a.index - b.index
     );
 
     // Greedy selection: always keep first (≥1 survivor invariant), then add while within budget
@@ -347,9 +364,7 @@ export async function readAndFormatRules(
   );
   const matchedPaths = survivors.map(entry => entry.filePath);
 
-  const formattedRules =
-    `# OpenCode Rules\n\nPlease follow the following rules:\n\n` +
-    ruleContents.join('\n\n---\n\n');
+  const formattedRules = RULES_HEADER + ruleContents.join(RULE_SEPARATOR);
 
   return {
     formattedRules,
