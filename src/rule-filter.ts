@@ -5,6 +5,7 @@
 import { minimatch } from 'minimatch';
 import { createDebugLog } from './debug.js';
 import { getCachedRule, type DiscoveredRule } from './rule-discovery.js';
+import type { RuleMetadata } from './rule-metadata.js';
 
 const debugLog = createDebugLog();
 
@@ -114,6 +115,143 @@ export interface RuleFilterContext {
 }
 
 /**
+ * A rule that has cleared conditional filtering and is awaiting dedup/budget
+ * selection. Fields are pre-computed so dedup and budget helpers stay pure.
+ */
+export interface MatchedEntry {
+  filePath: string;
+  relativePath: string;
+  strippedContent: string;
+  priority: number;
+  tokenCount: number;
+  /** Monotonically increasing discovery index; lower = discovered earlier. */
+  index: number;
+}
+
+/**
+ * Evaluate a rule's conditional metadata against the runtime filter context.
+ *
+ * Returns true when the rule should be included (no conditions declared, or
+ * the declared-condition checks pass under the `match` combinator). Returns
+ * false when at least one declared check fails the combinator. Undeclared
+ * dimensions are skipped (vacuously true) rather than failed.
+ */
+export function matchRuleConditions(
+  metadata: RuleMetadata | undefined | null,
+  ctx: RuleFilterContext,
+  availableToolSet: Set<string> | undefined,
+  relativePathForLog: string
+): boolean {
+  if (!metadata) return true;
+
+  const hasConditions = Boolean(
+    metadata.globs ||
+    metadata.keywords ||
+    metadata.tools ||
+    metadata.model ||
+    metadata.agent ||
+    metadata.command ||
+    metadata.project ||
+    metadata.branch ||
+    metadata.os ||
+    metadata.ci !== undefined
+  );
+
+  if (!hasConditions) return true;
+
+  const declaredChecks: boolean[] = [];
+
+  if (metadata.globs) {
+    const globs: string[] = metadata.globs;
+    const globsMatch =
+      ctx.contextFilePaths &&
+      ctx.contextFilePaths.length > 0 &&
+      ctx.contextFilePaths.some(contextPath =>
+        fileMatchesGlobs(contextPath, globs)
+      );
+    declaredChecks.push(Boolean(globsMatch));
+  }
+
+  if (metadata.keywords) {
+    const keywordsMatch =
+      ctx.userPrompt &&
+      promptMatchesKeywords(ctx.userPrompt, metadata.keywords);
+    declaredChecks.push(Boolean(keywordsMatch));
+  }
+
+  if (metadata.tools) {
+    const tools: string[] = metadata.tools;
+    const toolsMatch =
+      availableToolSet &&
+      tools.some((tool: string) => availableToolSet.has(tool));
+    declaredChecks.push(Boolean(toolsMatch));
+  }
+
+  if (metadata.model) {
+    const modelMatch = ctx.modelID && metadata.model.includes(ctx.modelID);
+    declaredChecks.push(Boolean(modelMatch));
+  }
+
+  if (metadata.agent) {
+    const agentMatch = ctx.agentType && metadata.agent.includes(ctx.agentType);
+    declaredChecks.push(Boolean(agentMatch));
+  }
+
+  if (metadata.command) {
+    const commandMatch = ctx.command && metadata.command.includes(ctx.command);
+    declaredChecks.push(Boolean(commandMatch));
+  }
+
+  if (metadata.project) {
+    const projectTags = ctx.projectTags;
+    const projectMatch =
+      projectTags &&
+      projectTags.length > 0 &&
+      metadata.project.some((tag: string) => projectTags.includes(tag));
+    declaredChecks.push(Boolean(projectMatch));
+  }
+
+  if (metadata.branch) {
+    const gitBranch = ctx.gitBranch;
+    const branchMatch =
+      gitBranch &&
+      metadata.branch.some((pattern: string) => {
+        if (pattern === gitBranch) return true;
+        const hasGlobChars = /[*?\[{]/.test(pattern);
+        return hasGlobChars ? minimatch(gitBranch, pattern) : false;
+      });
+    declaredChecks.push(Boolean(branchMatch));
+  }
+
+  if (metadata.os) {
+    const osMatch = ctx.os && metadata.os.includes(ctx.os);
+    declaredChecks.push(Boolean(osMatch));
+  }
+
+  if (metadata.ci !== undefined) {
+    declaredChecks.push(ctx.ci === metadata.ci);
+  }
+
+  const mode = metadata.match ?? 'any';
+  const shouldInclude =
+    mode === 'all'
+      ? declaredChecks.every(Boolean)
+      : declaredChecks.some(Boolean);
+
+  if (!shouldInclude) {
+    debugLog(
+      `Skipping conditional rule: ${relativePathForLog} (match: ${mode}, checks: ${declaredChecks.join(', ')})`
+    );
+  } else {
+    debugLog(
+      `Including conditional rule: ${relativePathForLog} (match: ${mode}, checks: ${declaredChecks.join(', ')})`
+    );
+  }
+
+  return shouldInclude;
+}
+
+/**
  * Read and format rule files for system prompt injection
  * @param files - Array of discovered rule files with paths
  * @param context - Optional RuleFilterContext for conditional rule matching
@@ -132,14 +270,6 @@ export async function readAndFormatRules(
       : undefined;
 
   // Collect matched entries with priority and token count
-  type MatchedEntry = {
-    filePath: string;
-    relativePath: string;
-    strippedContent: string;
-    priority: number;
-    tokenCount: number;
-    index: number;
-  };
   const entries: MatchedEntry[] = [];
   let entryIndex = 0;
 
@@ -152,132 +282,10 @@ export async function readAndFormatRules(
 
     const { metadata, strippedContent } = cachedRule;
 
-    // Check if rule has any conditional filters
-    const hasConditions = Boolean(
-      metadata?.globs ||
-      metadata?.keywords ||
-      metadata?.tools ||
-      metadata?.model ||
-      metadata?.agent ||
-      metadata?.command ||
-      metadata?.project ||
-      metadata?.branch ||
-      metadata?.os ||
-      metadata?.ci !== undefined
-    );
-
-    if (hasConditions && metadata) {
-      // Compute per-dimension match booleans (only for declared conditions)
-      const declaredChecks: boolean[] = [];
-
-      // Legacy: globs
-      if (metadata.globs) {
-        const globs = metadata.globs;
-        const globsMatch =
-          context.contextFilePaths &&
-          context.contextFilePaths.length > 0 &&
-          context.contextFilePaths.some(contextPath =>
-            fileMatchesGlobs(contextPath, globs)
-          );
-        declaredChecks.push(Boolean(globsMatch));
-      }
-
-      // Legacy: keywords
-      if (metadata.keywords) {
-        const keywordsMatch =
-          context.userPrompt &&
-          promptMatchesKeywords(context.userPrompt, metadata.keywords);
-        declaredChecks.push(Boolean(keywordsMatch));
-      }
-
-      // Legacy: tools
-      if (metadata.tools) {
-        const toolsMatch =
-          availableToolSet &&
-          metadata.tools.some(tool => availableToolSet.has(tool));
-        declaredChecks.push(Boolean(toolsMatch));
-      }
-
-      // New: model
-      if (metadata.model) {
-        const modelMatch =
-          context.modelID && metadata.model.includes(context.modelID);
-        declaredChecks.push(Boolean(modelMatch));
-      }
-
-      // New: agent
-      if (metadata.agent) {
-        const agentMatch =
-          context.agentType && metadata.agent.includes(context.agentType);
-        declaredChecks.push(Boolean(agentMatch));
-      }
-
-      // New: command
-      if (metadata.command) {
-        const commandMatch =
-          context.command && metadata.command.includes(context.command);
-        declaredChecks.push(Boolean(commandMatch));
-      }
-
-      // New: project
-      if (metadata.project) {
-        const projectTags = context.projectTags;
-        const projectMatch =
-          projectTags &&
-          projectTags.length > 0 &&
-          metadata.project.some(tag => projectTags.includes(tag));
-        declaredChecks.push(Boolean(projectMatch));
-      }
-
-      // New: branch (supports glob patterns)
-      if (metadata.branch) {
-        const gitBranch = context.gitBranch;
-        const branchMatch =
-          gitBranch &&
-          metadata.branch.some(pattern => {
-            // Exact match for non-glob patterns
-            if (pattern === gitBranch) {
-              return true;
-            }
-            // Only use glob matching if pattern contains glob characters
-            const hasGlobChars = /[*?\[{]/.test(pattern);
-            if (hasGlobChars) {
-              return minimatch(gitBranch, pattern);
-            }
-            return false;
-          });
-        declaredChecks.push(Boolean(branchMatch));
-      }
-
-      // New: os
-      if (metadata.os) {
-        const osMatch = context.os && metadata.os.includes(context.os);
-        declaredChecks.push(Boolean(osMatch));
-      }
-
-      // New: ci (strict boolean equality)
-      if (metadata.ci !== undefined) {
-        const ciMatch = context.ci === metadata.ci;
-        declaredChecks.push(ciMatch);
-      }
-
-      // Apply combinator: default 'any', or 'all' if specified
-      const mode = metadata.match ?? 'any';
-      const shouldInclude =
-        mode === 'all'
-          ? declaredChecks.every(Boolean)
-          : declaredChecks.some(Boolean);
-
-      if (!shouldInclude) {
-        debugLog(
-          `Skipping conditional rule: ${relativePath} (match: ${mode}, checks: ${declaredChecks.join(', ')})`
-        );
-        continue;
-      }
-
-      debugLog(
-        `Including conditional rule: ${relativePath} (match: ${mode}, checks: ${declaredChecks.join(', ')})`
-      );
+    if (
+      !matchRuleConditions(metadata, context, availableToolSet, relativePath)
+    ) {
+      continue;
     }
 
     // Extract priority (default 0 for selection; undefined in metadata means absent)
@@ -301,8 +309,18 @@ export async function readAndFormatRules(
     return { formattedRules: '', matchedPaths: [], tokenEstimate: 0 };
   }
 
-  // Content-based deduplication: collapse entries with identical strippedContent
-  // Higher priority wins; on equal priority, higher index (later-discovered) wins
+  const deduplicatedEntries = deduplicateEntries(entries);
+  const survivors = selectByTokenBudget(deduplicatedEntries, context.maxTokens);
+  return formatRules(survivors);
+}
+
+/**
+ * Collapse entries that share identical `strippedContent`. For each content key,
+ * the entry with the higher `priority` wins; on equal priority, the entry with
+ * the higher `index` (later-discovered) wins. Result is sorted by index
+ * ascending so downstream stages see discovery order.
+ */
+export function deduplicateEntries(entries: MatchedEntry[]): MatchedEntry[] {
   const dedupedMap = new Map<string, MatchedEntry>();
   for (const entry of entries) {
     const existing = dedupedMap.get(entry.strippedContent);
@@ -324,48 +342,56 @@ export async function readAndFormatRules(
       }
     }
   }
+  return [...dedupedMap.values()].sort((a, b) => a.index - b.index);
+}
 
-  // Sort survivors by discovery order (index ascending) before budget selection
-  const deduplicatedEntries = [...dedupedMap.values()].sort(
-    (a, b) => a.index - b.index
-  );
-
-  // Determine which entries to include based on budget
-  const maxTokens = context.maxTokens;
+/**
+ * Greedy token-budget selection over deduplicated entries.
+ *
+ * - When `maxTokens` is not a finite positive number (undefined, 0, negative,
+ *   NaN, Infinity), entries are returned in discovery order with no filtering.
+ * - Otherwise entries are stably sorted by priority desc, index asc; the first
+ *   sorted entry is always kept (≥1 survivor invariant), and remaining entries
+ *   are appended greedily while their cumulative token cost stays ≤ `maxTokens`.
+ */
+export function selectByTokenBudget(
+  entries: MatchedEntry[],
+  maxTokens: number | undefined
+): MatchedEntry[] {
   const hasValidBudget =
     typeof maxTokens === 'number' &&
     maxTokens > 0 &&
     Number.isFinite(maxTokens);
 
-  let survivors: MatchedEntry[];
   if (!hasValidBudget) {
-    // No budget: use discovery order (existing behavior)
-    survivors = deduplicatedEntries;
-  } else {
-    // Valid budget: stable sort by priority desc, index asc
-    const sorted = [...deduplicatedEntries].sort(
-      (a, b) => b.priority - a.priority || a.index - b.index
-    );
-
-    // Greedy selection: always keep first (≥1 survivor invariant), then add while within budget
-    survivors = [sorted[0]];
-    let runningTokens = sorted[0].tokenCount;
-    for (let i = 1; i < sorted.length; i++) {
-      if (runningTokens + sorted[i].tokenCount <= maxTokens) {
-        survivors.push(sorted[i]);
-        runningTokens += sorted[i].tokenCount;
-      }
-    }
+    return entries;
   }
 
-  // Build output from survivors
+  const sorted = [...entries].sort(
+    (a, b) => b.priority - a.priority || a.index - b.index
+  );
+  const survivors: MatchedEntry[] = [sorted[0]];
+  let runningTokens = sorted[0].tokenCount;
+  for (let i = 1; i < sorted.length; i++) {
+    if (runningTokens + sorted[i].tokenCount <= maxTokens) {
+      survivors.push(sorted[i]);
+      runningTokens += sorted[i].tokenCount;
+    }
+  }
+  return survivors;
+}
+
+/**
+ * Build the final formatted block: preamble + per-rule `## path\n\nbody`
+ * chunks joined by `RULE_SEPARATOR`. `tokenEstimate` reflects the entire
+ * formatted output, not just the bodies.
+ */
+export function formatRules(survivors: MatchedEntry[]): FilterResult {
   const ruleContents = survivors.map(
     entry => `## ${entry.relativePath}\n\n${entry.strippedContent}`
   );
   const matchedPaths = survivors.map(entry => entry.filePath);
-
   const formattedRules = RULES_HEADER + ruleContents.join(RULE_SEPARATOR);
-
   return {
     formattedRules,
     matchedPaths,

@@ -9,9 +9,11 @@ import {
   toExtractableMessages,
   type MessageWithInfo,
 } from './message-context.js';
-import { extractConnectedMcpCapabilityIDs } from './mcp-tools.js';
 import { createDebugLog, type DebugLog } from './debug.js';
-import { logWarning } from './log.js';
+import {
+  queryAvailableToolIDs,
+  type ToolQueryClient,
+} from './tool-query-service.js';
 import { COMPACTING_GRACE_PERIOD_MS } from './constants.js';
 import type { SessionStore } from './session-store.js';
 import {
@@ -275,43 +277,11 @@ export class OpenCodeRulesRuntime {
   }
 
   private async queryAvailableToolIDs(): Promise<string[]> {
-    const ids = new Set<string>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const client = this.client as any;
-    const query = { directory: this.directory };
-
-    const [toolResult, mcpResult] = await Promise.allSettled([
-      client.tool?.ids?.({ query }),
-      client.mcp?.status?.({ query }),
-    ]);
-
-    if (
-      toolResult.status === 'fulfilled' &&
-      Array.isArray(toolResult.value?.data)
-    ) {
-      for (const id of toolResult.value.data) {
-        ids.add(id);
-      }
-      this.debugLog(
-        `Built-in tools: ${toolResult.value.data.slice(0, 10).join(', ')}${toolResult.value.data.length > 10 ? '...' : ''} (${toolResult.value.data.length} total)`
-      );
-    } else if (toolResult.status === 'rejected') {
-      logWarning('Failed to query tool IDs', toolResult.reason);
-    }
-
-    if (mcpResult.status === 'fulfilled' && mcpResult.value?.data) {
-      const mcpIds = extractConnectedMcpCapabilityIDs(mcpResult.value.data);
-      for (const id of mcpIds) {
-        ids.add(id);
-      }
-      if (mcpIds.length > 0) {
-        this.debugLog(`MCP capability IDs: ${mcpIds.join(', ')}`);
-      }
-    } else if (mcpResult.status === 'rejected') {
-      logWarning('Failed to query MCP status', mcpResult.reason);
-    }
-
-    return Array.from(ids);
+    return queryAvailableToolIDs(
+      this.client as ToolQueryClient,
+      this.directory,
+      this.debugLog
+    );
   }
 
   private async onSessionCompacting(
