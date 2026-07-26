@@ -17,11 +17,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import { resolve } from 'path';
-import { homedir } from 'os';
+import { homedir as _homedir } from 'os';
 
-// @ts-ignore — module exists
+// @ts-expect-error — module exists
 import { runUpdate, type UpdateResult } from '../cli/update.js';
-// @ts-ignore
+// @ts-expect-error — module exists
 import type { SpawnResult } from '../cli/spawn.js';
 
 const FAKE_HOME = '/tmp/omd-update-test-home';

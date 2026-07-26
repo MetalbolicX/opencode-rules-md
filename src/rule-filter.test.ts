@@ -321,7 +321,7 @@ describe('readAndFormatRules', () => {
       const result = await readAndFormatRules([ruleA, ruleB, ruleC]);
       // A is unique, B and C are duplicate — C (higher index) wins for the duplicate pair
       // Final order should be A then C (discovery order preserved)
-      const bIndex = result.formattedRules.indexOf('## b.md');
+      const _bIndex = result.formattedRules.indexOf('## b.md');
       const cIndex = result.formattedRules.indexOf('## c.md');
       const aIndex = result.formattedRules.indexOf('## a.md');
       // C should appear (it won the duplicate), B should not

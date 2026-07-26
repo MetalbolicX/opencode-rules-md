@@ -21,13 +21,13 @@ import { describe, it, expect } from 'vitest';
 import { resolve } from 'path';
 import { homedir } from 'os';
 
-// @ts-ignore — module exists
+// @ts-expect-error — module exists
 import { runMain, type MainOptions } from '../cli/main.js';
-// @ts-ignore
-import { runInstall, type InstallOptions } from '../cli/install.js';
-// @ts-ignore
-import { runUninstall, type UninstallOptions } from '../cli/uninstall.js';
-// @ts-ignore
+// @ts-expect-error — module exists
+import { runInstall, type _InstallOptions } from '../cli/install.js';
+// @ts-expect-error — module exists
+import { runUninstall, type _UninstallOptions } from '../cli/uninstall.js';
+// @ts-expect-error — module exists
 import type { SpawnResult } from '../cli/spawn.js';
 
 const MOCK_LATEST = '9.9.9';
@@ -519,7 +519,7 @@ describe('runInstall', () => {
   });
 
   it('passes the configured env through to the spawned process', async () => {
-    const fake = makeFakeSpawn();
+    const _fake = makeFakeSpawn();
     const fs = makeFakeFs({}, []);
     const fakeEnv = makeFakeEnv({ OMD_TEST_VAR: 'present' });
 

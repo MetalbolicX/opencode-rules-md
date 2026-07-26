@@ -211,7 +211,7 @@ describe('resolveConfigPath', () => {
 
   it('returns .json path (not .jsonc) when neither file exists', () => {
     const home = homedir();
-    const cfgDir = resolve(home, '.config', 'opencode');
+    const _cfgDir = resolve(home, '.config', 'opencode');
     const fs = makeFakeFs({});
 
     const result = resolveConfigPath(fs, {}, 'opencode');

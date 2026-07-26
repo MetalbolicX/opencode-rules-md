@@ -655,7 +655,6 @@ globs:
 Legacy globs rule.`
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { formattedRules } = await readAndFormatRules(toRules([rulePath]), [
       'src/app.ts',
     ] as any);
@@ -676,7 +675,6 @@ keywords:
 Legacy keywords rule.`
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { formattedRules } = await (readAndFormatRules as any)(
       toRules([rulePath]),
       {},
@@ -699,7 +697,6 @@ tools:
 Legacy tools rule.`
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { formattedRules } = await (readAndFormatRules as any)(
       toRules([rulePath]),
       {},
