@@ -6,6 +6,7 @@ import { stat, readFile, readdir } from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { createDebugLog } from './debug.js';
+import { logWarning } from './log.js';
 import {
   parseRuleMetadata,
   stripFrontmatter,
@@ -79,10 +80,7 @@ export async function getCachedRule(
   } catch (error) {
     // Remove stale cache entry if file no longer exists
     ruleCache.delete(filePath);
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(
-      `[opencode-rules-md] Warning: Failed to read rule file ${filePath}: ${message}`
-    );
+    logWarning(`Failed to read rule file ${filePath}`, error);
     return undefined;
   }
 }
@@ -143,10 +141,7 @@ async function scanDirectoryRecursively(
       return results;
     }
     // Log non-ENOENT directory read errors
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(
-      `[opencode-rules-md] Warning: Failed to read directory ${dir}: ${message}`
-    );
+    logWarning(`Failed to read directory ${dir}`, error);
   }
 
   return results;

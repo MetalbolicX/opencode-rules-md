@@ -2,7 +2,12 @@
  * Rule metadata parsing and frontmatter extraction
  */
 
+import { logWarning } from './log.js';
+
 const { parse: parseYaml } = await import('yaml');
+
+/** YAML frontmatter open/close marker shared by parsers and strippers. */
+const FRONTMATTER_DELIMITER = '---' as const;
 
 /**
  * Metadata extracted from .mdc file frontmatter
@@ -77,12 +82,12 @@ function extractStringArray(value: unknown): string[] | undefined {
  */
 export function parseRuleMetadata(content: string): RuleMetadata | undefined {
   // Check if content starts with frontmatter
-  if (!content.startsWith('---')) {
+  if (!content.startsWith(FRONTMATTER_DELIMITER)) {
     return undefined;
   }
 
   // Find the closing --- marker
-  const endIndex = content.indexOf('---', 3);
+  const endIndex = content.indexOf(FRONTMATTER_DELIMITER, 3);
   if (endIndex === -1) {
     return undefined;
   }
@@ -133,7 +138,10 @@ export function parseRuleMetadata(content: string): RuleMetadata | undefined {
     }
 
     // Extract priority (finite numbers only; non-finite or absent becomes undefined, treated as 0 downstream)
-    if (typeof parsed.priority === 'number' && Number.isFinite(parsed.priority)) {
+    if (
+      typeof parsed.priority === 'number' &&
+      Number.isFinite(parsed.priority)
+    ) {
       metadata.priority = parsed.priority;
     }
 
@@ -141,10 +149,7 @@ export function parseRuleMetadata(content: string): RuleMetadata | undefined {
     return Object.keys(metadata).length > 0 ? metadata : undefined;
   } catch (error) {
     // Log warning for YAML parsing errors
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(
-      `[opencode-rules-md] Warning: Failed to parse YAML frontmatter: ${message}`
-    );
+    logWarning('Failed to parse YAML frontmatter', error);
     return undefined;
   }
 }
@@ -154,12 +159,12 @@ export function parseRuleMetadata(content: string): RuleMetadata | undefined {
  */
 export function stripFrontmatter(content: string): string {
   // Check if content starts with frontmatter
-  if (!content.startsWith('---')) {
+  if (!content.startsWith(FRONTMATTER_DELIMITER)) {
     return content;
   }
 
   // Find the closing --- marker
-  const endIndex = content.indexOf('---', 3);
+  const endIndex = content.indexOf(FRONTMATTER_DELIMITER, 3);
   if (endIndex === -1) {
     return content;
   }

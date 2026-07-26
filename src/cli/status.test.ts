@@ -16,9 +16,9 @@ import { homedir } from 'os';
 
 // ─── Direct imports — fail at load time in RED until modules exist ───────────
 
-// @ts-ignore — module not yet written
+// @ts-expect-error — module not yet written
 import { runStatus, runDoctor } from '../cli/status.js';
-// @ts-ignore — types not yet written
+// @ts-expect-error — types not yet written
 import type { StatusResult, DoctorResult } from '../cli/status.js';
 
 // ─── Fake CliFs factory (mirrors config.test.ts and main.test.ts) ─────────────

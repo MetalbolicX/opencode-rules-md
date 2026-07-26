@@ -19,7 +19,7 @@ import { join } from 'path';
 import { fetchLatestVersion, isStale } from './registry.js';
 import {
   loadGlobalConfig,
-  matchesPlugin,
+  findInstalledPlugin,
   readInstalledPlugins,
   type CliFs,
   type LoadedConfig,
@@ -110,7 +110,7 @@ export interface UpdateResult {
 function findInstalledSpecifier(loaded: readonly LoadedConfig[]): string | null {
   for (const cfg of loaded) {
     const plugins = readInstalledPlugins(cfg);
-    const match = plugins.find((p) => matchesPlugin(p));
+    const match = findInstalledPlugin(plugins);
     if (match) return match;
   }
   return null;

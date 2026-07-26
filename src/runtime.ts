@@ -9,8 +9,12 @@ import {
   toExtractableMessages,
   type MessageWithInfo,
 } from './message-context.js';
-import { extractConnectedMcpCapabilityIDs } from './mcp-tools.js';
 import { createDebugLog, type DebugLog } from './debug.js';
+import {
+  queryAvailableToolIDs,
+  type ToolQueryClient,
+} from './tool-query-service.js';
+import { COMPACTING_GRACE_PERIOD_MS } from './constants.js';
 import type { SessionStore } from './session-store.js';
 import {
   buildFilterContext,
@@ -22,6 +26,9 @@ import {
   type ChatMessageOutput,
 } from './runtime-chat.js';
 import { writeActiveRulesState } from './active-rules-state.js';
+
+/** Cap on context paths surfaced to the compaction context block. */
+const MAX_COMPACTION_PATHS = 20;
 
 interface MessagesTransformOutput {
   messages: MessageWithInfo[];
@@ -187,7 +194,7 @@ export class OpenCodeRulesRuntime {
       const skip = this.sessionStore.shouldSkipInjection(
         sessionID,
         this.now(),
-        30_000
+        COMPACTING_GRACE_PERIOD_MS
       );
       if (skip) {
         this.debugLog(
@@ -270,55 +277,11 @@ export class OpenCodeRulesRuntime {
   }
 
   private async queryAvailableToolIDs(): Promise<string[]> {
-    const ids = new Set<string>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const client = this.client as any;
-    const query = { directory: this.directory };
-
-    const [toolResult, mcpResult] = await Promise.allSettled([
-      client.tool?.ids?.({ query }),
-      client.mcp?.status?.({ query }),
-    ]);
-
-    if (
-      toolResult.status === 'fulfilled' &&
-      Array.isArray(toolResult.value?.data)
-    ) {
-      for (const id of toolResult.value.data) {
-        ids.add(id);
-      }
-      this.debugLog(
-        `Built-in tools: ${toolResult.value.data.slice(0, 10).join(', ')}${toolResult.value.data.length > 10 ? '...' : ''} (${toolResult.value.data.length} total)`
-      );
-    } else if (toolResult.status === 'rejected') {
-      const message =
-        toolResult.reason instanceof Error
-          ? toolResult.reason.message
-          : String(toolResult.reason);
-      console.warn(
-        `[opencode-rules-md] Warning: Failed to query tool IDs: ${message}`
-      );
-    }
-
-    if (mcpResult.status === 'fulfilled' && mcpResult.value?.data) {
-      const mcpIds = extractConnectedMcpCapabilityIDs(mcpResult.value.data);
-      for (const id of mcpIds) {
-        ids.add(id);
-      }
-      if (mcpIds.length > 0) {
-        this.debugLog(`MCP capability IDs: ${mcpIds.join(', ')}`);
-      }
-    } else if (mcpResult.status === 'rejected') {
-      const message =
-        mcpResult.reason instanceof Error
-          ? mcpResult.reason.message
-          : String(mcpResult.reason);
-      console.warn(
-        `[opencode-rules-md] Warning: Failed to query MCP status: ${message}`
-      );
-    }
-
-    return Array.from(ids);
+    return queryAvailableToolIDs(
+      this.client as ToolQueryClient,
+      this.directory,
+      this.debugLog
+    );
   }
 
   private async onSessionCompacting(
@@ -344,15 +307,14 @@ export class OpenCodeRulesRuntime {
     const sortedPaths = Array.from(sessionState.contextPaths).sort((a, b) =>
       a.localeCompare(b)
     );
-    const maxPaths = 20;
-    const pathsToInclude = sortedPaths.slice(0, maxPaths);
+    const pathsToInclude = sortedPaths.slice(0, MAX_COMPACTION_PATHS);
 
     const contextString = [
       'OpenCode Rules: Working context',
       'Current file paths in context:',
       ...pathsToInclude.map(p => `  - ${sanitizePathForContext(p)}`),
-      ...(sortedPaths.length > maxPaths
-        ? [`  ... and ${sortedPaths.length - maxPaths} more paths`]
+      ...(sortedPaths.length > MAX_COMPACTION_PATHS
+        ? [`  ... and ${sortedPaths.length - MAX_COMPACTION_PATHS} more paths`]
         : []),
     ].join('\n');
 

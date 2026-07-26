@@ -529,25 +529,25 @@ The plugin registers a `sidebar_content` slot in the OpenCode TUI, displaying al
 
 ```bash
 # Install dependencies
-bun install
+pnpm install
 
 # Run tests in watch mode
-bun run test
+pnpm run test
 
 # Run tests once
-bun run test:run
+pnpm run test:run
 
 # Build the project
-bun run build
+pnpm run build
 
 # Watch for changes and rebuild
-bun run dev
+pnpm run dev
 
 # Format code
-bun run format
+pnpm run format
 
 # Lint code
-bun run lint
+pnpm run lint
 ```
 
 ### Tech Stack
@@ -644,8 +644,8 @@ We welcome contributions! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new functionality
-4. Ensure all tests pass: `bun run test:run`
-5. Format code: `bun run format`
+4. Ensure all tests pass: `pnpm run test:run`
+5. Format code: `pnpm run format`
 6. Submit a pull request
 
 ### Development Guidelines
