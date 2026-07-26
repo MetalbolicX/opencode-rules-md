@@ -105,8 +105,5 @@
     "minimatch": "^10.2.5",
     "solid-js": "^1.9.14",
     "yaml": "^2.9.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["msgpackr-extract"]
   }
 }
