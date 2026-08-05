@@ -30,6 +30,7 @@ import {
   _setStateDirForTesting,
   readActiveRulesState,
 } from './active-rules-state.js';
+import { clearProjectFilesCache } from './project-file-scanner.js';
 
 describe('module boundary tests', () => {
   it('should re-export discoverRuleFiles from rule-discovery module', () => {
@@ -316,6 +317,61 @@ describe('OpenCodeRulesPlugin', () => {
 
     expect(result.system).toContain('OpenCode Rules');
     expect(result.system).toContain('Rule Content');
+  });
+
+  it('e2e: injects TS glob rule on empty context via system.transform', async () => {
+    const { testDir } = getTestDirs();
+
+    // Project dir: testDir/project
+    const projectDir = path.join(testDir, 'project');
+    const projectRulesDir = path.join(projectDir, '.opencode', 'rules');
+    mkdirSync(projectRulesDir, { recursive: true });
+    mkdirSync(path.join(projectDir, 'src'), { recursive: true });
+
+    // Write a TS rule with globs: ["**/*.ts"]
+    writeFileSync(
+      path.join(projectRulesDir, 'typescript.md'),
+      `---\nglobs:\n  - "**/*.ts"\n---\nTS_RULE_MARKER: Use strict TypeScript patterns.`
+    );
+    // Write a matching source file
+    writeFileSync(path.join(projectDir, 'src', 'foo.ts'), '// ts file');
+
+    // Clear scanner cache so this test gets a clean slate
+    clearProjectFilesCache();
+
+    // Unset XDG_CONFIG_HOME so only project-level rules are discovered
+    const savedXDG = process.env.XDG_CONFIG_HOME;
+    delete process.env.XDG_CONFIG_HOME;
+
+    try {
+      const {
+        default: { server: plugin },
+      } = await import('./index.js');
+      // directory must be the project dir for the scanner to find src/foo.ts
+      const mockInput = createMockPluginInput({ testDir: projectDir });
+
+      const hooks = await plugin(
+        mockInput as unknown as Parameters<typeof plugin>[0]
+      );
+      const systemTransform = hooks[
+        'experimental.chat.system.transform'
+      ] as (
+        input: unknown,
+        output: { system: string }
+      ) => Promise<{ system: string }>;
+
+      // Empty session context — no tool-touched files
+      const result = await systemTransform({}, { system: 'You are helpful.' });
+
+      // The TS rule must be injected because the scanner found src/foo.ts
+      expect(result.system).toContain('TS_RULE_MARKER');
+    } finally {
+      if (savedXDG !== undefined) {
+        process.env.XDG_CONFIG_HOME = savedXDG;
+      } else {
+        delete process.env.XDG_CONFIG_HOME;
+      }
+    }
   });
 
   it('should not modify messages in messages.transform hook', async () => {

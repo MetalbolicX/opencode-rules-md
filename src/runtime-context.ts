@@ -3,6 +3,10 @@ import { detectProjectTags } from './project-fingerprint.js';
 import { getGitBranch } from './git-branch.js';
 import type { RuleFilterContext } from './rule-filter.js';
 import type { DebugLog } from './debug.js';
+import {
+  discoverProjectFiles as defaultDiscoverProjectFiles,
+  type DiscoverProjectFilesOptions,
+} from './project-file-scanner.js';
 
 export interface BuildFilterContextOptions {
   contextFilePaths: string[];
@@ -10,6 +14,15 @@ export interface BuildFilterContextOptions {
   availableToolIDs: string[];
   modelID: string | undefined;
   agentType: string | undefined;
+  /**
+   * Optional DI seam for the project file scanner.
+   * When contextFilePaths is empty, this function is called to discover
+   * project files so glob rules can evaluate against real files.
+   * Defaults to the built-in scanner from project-file-scanner.ts.
+   */
+  discoverProjectFiles?: (
+    opts: DiscoverProjectFilesOptions
+  ) => Promise<string[]>;
 }
 
 /**
@@ -113,8 +126,17 @@ export async function buildFilterContext(
     ci,
   };
 
-  if (contextFilePaths.length > 0) {
-    context.contextFilePaths = contextFilePaths;
+  // Determine effective file paths:
+  // - Non-empty session paths take precedence (existing behavior)
+  // - Empty session paths: invoke the project file scanner to populate context
+  //   so glob-bearing rules can evaluate against real project files
+  let effectivePaths = contextFilePaths;
+  if (effectivePaths.length === 0) {
+    const discover = opts.discoverProjectFiles ?? defaultDiscoverProjectFiles;
+    effectivePaths = await discover({ projectDir: projectDirectory });
+  }
+  if (effectivePaths.length > 0) {
+    context.contextFilePaths = effectivePaths;
   }
   if (userPrompt !== undefined) {
     context.userPrompt = userPrompt;
