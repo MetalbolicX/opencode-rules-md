@@ -88,21 +88,21 @@
     }
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.18.2",
-    "@opencode-ai/sdk": "^1.18.2",
+    "@opencode-ai/plugin": "^1.18.14",
+    "@opencode-ai/sdk": "^1.18.14",
     "@types/minimatch": "^6.0.0",
-    "@types/node": "^26.1.1",
-    "@typescript-eslint/eslint-plugin": "^8.64.0",
-    "@typescript-eslint/parser": "^8.64.0",
-    "eslint": "^10.7.0",
-    "prettier": "^3.9.5",
-    "typescript": "^5.9.3",
+    "@types/node": "^26.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.66.0",
+    "@typescript-eslint/parser": "^8.66.0",
+    "eslint": "^10.8.0",
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@opentui/core": "^0.4.3",
-    "@opentui/solid": "^0.4.3",
-    "minimatch": "^10.2.5",
+    "@opentui/core": "^0.5.1",
+    "@opentui/solid": "^0.5.1",
+    "minimatch": "^10.2.6",
     "solid-js": "^1.9.14",
     "yaml": "^2.9.0"
   }
