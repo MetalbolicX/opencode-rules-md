@@ -13,7 +13,7 @@
     "omd": "./dist/cli.mjs"
   },
   "scripts": {
-    "build": "tsc && bun scripts/build-tui.mjs && bun scripts/build-cli.mjs",
+    "build": "pnpm tsc && bun scripts/build-tui.mjs && bun scripts/build-cli.mjs",
     "build:cli": "bun scripts/build-cli.mjs",
     "dev": "tsc --watch",
     "test": "vitest",
