@@ -1,12 +1,13 @@
 // ---------------------------------------------------------------------------
 // src/cli/update.ts — `omd update` command implementation.
 //
-// Like install, update is now a thin wrapper around OpenCode's own CLI.
+// Like install, update is a thin wrapper around OpenCode's own CLI.
 // We compare the installed version (read from `data['plugin']` — singular —
 // with a backward-compat fallback to the legacy `data['plugins']`) against
 // the latest npm version. When stale we purge the on-disk cache under
-// ~/.cache/opencode/packages/ (the actual location OpenCode uses) and
-// invoke `opencode plugin opencode-rules-md --global --force` to refresh
+// $XDG_CACHE_HOME/opencode/packages/ (the actual location OpenCode uses,
+// matching its xdg-basedir resolution) and invoke
+// `opencode plugin opencode-rules-md@latest --global --force` to refresh
 // the registration.
 //
 // The cache purge matters because OpenCode caches the resolved package
@@ -25,14 +26,18 @@ import {
   type LoadedConfig,
 } from './config.js';
 import { spawnOpencodePlugin } from './spawn.js';
+import { PLUGIN_NAME } from './config.js';
 
 const CONFIG_BASENAMES = ['opencode', 'tui'] as const;
 
-/** Package directory used by OpenCode to cache plugin installs. */
-export const PACKAGES_DIR_BASENAME = ['.cache', 'opencode', 'packages'] as const;
+/** Sub-path appended to the cache root to locate OpenCode's packages dir. */
+const PACKAGES_SUBPATH = ['opencode', 'packages'] as const;
+
+/** Fallback path segments under $HOME when XDG_CACHE_HOME is not set. */
+const HOME_PACKAGES_SUBPATH = ['.cache', ...PACKAGES_SUBPATH] as const;
 
 /** Exact cache directory name we look for (bare specifier, no version suffix). */
-export const CACHE_DIR_BASENAME = 'opencode-rules-md';
+export const CACHE_DIR_BASENAME = PLUGIN_NAME;
 
 /**
  * Resolve the user's home directory, honoring a custom HOME env var.
@@ -44,15 +49,24 @@ export function resolveHome(env: NodeJS.ProcessEnv = process.env): string {
 
 /**
  * Return the absolute path of the OpenCode packages cache directory.
+ *
+ * Mirrors OpenCode's own resolution via xdg-basedir: $XDG_CACHE_HOME takes
+ * precedence, falling back to $HOME/.cache. This keeps purge/uninstall
+ * operations targeting the same directory OpenCode actually installs into.
  */
 export function resolvePackagesDir(env: NodeJS.ProcessEnv = process.env): string {
-  return join(resolveHome(env), ...PACKAGES_DIR_BASENAME);
+  const xdg = env.XDG_CACHE_HOME;
+  if (xdg && xdg.trim() !== '') {
+    return join(xdg, ...PACKAGES_SUBPATH);
+  }
+  return join(resolveHome(env), ...HOME_PACKAGES_SUBPATH);
 }
 
 /**
  * Return the cache directories that match the opencode-rules-md prefix.
  *
- * Real-world layout under ~/.cache/opencode/packages/ looks like:
+ * Real-world layout under the packages dir (resolved via XDG_CACHE_HOME or
+ * $HOME/.cache) looks like:
  *   opencode-rules-md/
  *   opencode-rules-md@latest/
  *   some-other-plugin/
@@ -177,7 +191,7 @@ export function purgeDirectory(fs: CliFs, dirPath: string): void {
  * 3. If unreachable, log and return.
  * 4. If current, log and return.
  * 5. Otherwise: purge stale cache directories, then spawn
- *    `opencode plugin opencode-rules-md --global --force`.
+ *    `opencode plugin opencode-rules-md@latest --global --force`.
  */
 export const runUpdate = async (
   fs: CliFs,
@@ -190,7 +204,8 @@ export const runUpdate = async (
   const latest = opts.latestVersion !== undefined ? opts.latestVersion : await fetchLatestVersion();
 
   const cachePaths = resolveCachePaths(env, fs);
-  const instruction = 'opencode plugin opencode-rules-md --global --force';
+  const reinstallSpecifier = `${PLUGIN_NAME}@latest`;
+  const instruction = `opencode plugin ${reinstallSpecifier} --global --force`;
   const spawnFn = opts.spawn ?? spawnOpencodePlugin;
 
   // 2. Unreachable.
@@ -226,27 +241,29 @@ export const runUpdate = async (
       : `omd: opencode-rules-md is stale (installed ${installedVersion}, latest ${latest})`,
   );
 
-  // Purge each matching cache directory. Best-effort per path.
+  // Purge each matching cache directory. Best-effort per path, but surface
+  // failures so users know when cache invalidation did not complete — a
+  // stale cache means OpenCode will reuse the old package on re-register.
   for (const cachePath of cachePaths) {
     try {
       if (fs.existsSync(cachePath)) {
         purgeDirectory(fs, cachePath);
         log(`omd: purged cache ${cachePath}`);
       }
-    } catch {
-      // ignore individual purge failures
+    } catch (err) {
+      log(`omd: warning: could not purge cache ${cachePath} (${(err as Error).message})`);
     }
   }
 
   // Re-register via OpenCode's CLI. Failure here is fatal — surface it.
-  const result = await spawnFn(['opencode-rules-md', '--global', '--force'], {
-    env: process.env,
+  const result = await spawnFn([reinstallSpecifier, '--global', '--force'], {
+    env,
     stdio: 'inherit',
   });
 
   if ((result.status ?? 0) !== 0) {
     throw new Error(
-      `opencode plugin opencode-rules-md --global --force exited with status ${String(result.status)}`,
+      `opencode plugin ${reinstallSpecifier} --global --force exited with status ${String(result.status)}`,
     );
   }
 

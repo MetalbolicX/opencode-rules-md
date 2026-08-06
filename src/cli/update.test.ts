@@ -5,8 +5,8 @@
  *
  * Behavioral contract verified here:
  *   - When stale, the command purges the actual OpenCode packages cache
- *     (under ~/.cache/opencode/packages/opencode-rules-md*) and then
- *     spawns `opencode plugin opencode-rules-md --global --force`.
+ *     (under $XDG_CACHE_HOME/opencode/packages/ or ~/.cache/.../) and then
+ *     spawns `opencode plugin opencode-rules-md@latest --global --force`.
  *   - When current, the command reports "already at latest" without any
  *     side effects.
  *   - --dry-run prints the planned purge + spawn without touching disk.
@@ -191,9 +191,9 @@ describe('runUpdate', () => {
 
     expect(result.status).toBe('stale');
     expect(fs.existsSync(cacheDir)).toBe(false);
-    // spawn was called once with the --force flag.
+    // spawn was called once with the @latest specifier and --force flag.
     expect(fake.calls).toHaveLength(1);
-    expect(fake.calls[0]!.args).toEqual(['opencode-rules-md', '--global', '--force']);
+    expect(fake.calls[0]!.args).toEqual(['opencode-rules-md@latest', '--global', '--force']);
   });
 
   it('current version: reports "already current" and does NOT spawn', async () => {
@@ -413,5 +413,72 @@ describe('runUpdate', () => {
 
     expect(result.status).toBe('stale');
     expect(fake.calls).toHaveLength(1);
+  });
+
+  it('honors XDG_CACHE_HOME when resolving cache paths', async () => {
+    const xdgCache = '/tmp/omd-xdg-cache-test';
+    const packagesDir = resolve(xdgCache, 'opencode', 'packages');
+    const cacheDir = resolve(packagesDir, 'opencode-rules-md@latest');
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+
+    const fs = makeFakeFs({
+      [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@1.0.0'] }),
+      [resolve(cacheDir, 'package.json')]: '{}',
+    }, [packagesDir, cacheDir]);
+
+    const fakeEnv = makeFakeEnv({ XDG_CACHE_HOME: xdgCache });
+    const fake = makeFakeSpawn();
+
+    const result = (await runUpdate(
+      fs,
+      fakeEnv,
+      () => {},
+      () => {},
+      { latestVersion: '2.0.0', spawn: fake.spawn },
+    )) as UpdateResult;
+
+    // cachePaths must point under XDG_CACHE_HOME, not $HOME/.cache
+    expect(result.cachePaths.length).toBeGreaterThan(0);
+    for (const p of result.cachePaths) {
+      expect(p).toContain(xdgCache);
+      expect(p).not.toContain('.cache/opencode');
+    }
+    // The cache dir under XDG was purged.
+    expect(fs.existsSync(cacheDir)).toBe(false);
+  });
+
+  it('passes the injected env to the spawned process', async () => {
+    const cfgDir = resolve(FAKE_HOME, '.config', 'opencode');
+    const opencodePath = resolve(cfgDir, 'opencode.json');
+
+    const fs = makeFakeFs({
+      [opencodePath]: JSON.stringify({ plugin: ['opencode-rules-md@1.0.0'] }),
+    }, [cfgDir]);
+
+    const fakeEnv = makeFakeEnv({ OMD_UPDATE_TEST: 'injected' });
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+
+    const result = (await runUpdate(
+      fs,
+      fakeEnv,
+      () => {},
+      () => {},
+      {
+        latestVersion: '2.0.0',
+        spawn: (async (
+          _args: string[],
+          opts?: { env?: NodeJS.ProcessEnv; stdio?: 'pipe' | 'inherit' },
+        ) => {
+          capturedEnv = opts?.env;
+          return { status: 0, stdout: '', stderr: '' };
+        }) as import('./update.js').UpdateOptions['spawn'],
+      },
+    )) as UpdateResult;
+
+    expect(result.status).toBe('stale');
+    expect(capturedEnv).toBeDefined();
+    // The env we passed must reach the spawn layer — not process.env.
+    expect(capturedEnv!['OMD_UPDATE_TEST']).toBe('injected');
   });
 });

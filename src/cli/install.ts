@@ -9,20 +9,22 @@
 // source of the original bug (we wrote `plugins` plural, which OpenCode
 // silently ignored).
 //
-// The bare specifier `opencode-rules-md` (no `@latest`) is intentional:
-// it lets OpenCode resolve and refresh the package on every invocation
-// without us pinning to a stale version literal.
+// The default specifier is `opencode-rules-md@latest` — identical to what
+// users type when running `opencode plugin opencode-rules-md@latest --global`
+// directly. OpenCode resolves bare names to `@latest` internally, but using
+// the explicit tag keeps the stored config entry, cache directory name, and
+// status/update parsing consistent across both invocation paths.
 // ---------------------------------------------------------------------------
 
 import { spawnOpencodePlugin } from './spawn.js';
 import type { CliFs } from './config.js';
 import { PLUGIN_NAME } from './config.js';
 
-/** Default base specifier used when the caller does not pin a version. */
-export const DEFAULT_SPECIFIER = PLUGIN_NAME;
+/** Default specifier used when the caller does not pin a version. */
+export const DEFAULT_SPECIFIER = `${PLUGIN_NAME}@latest`;
 
 export interface InstallOptions {
-  /** Pin to a specific version, e.g. `"2.0.0"`. Falsy means "use the bare specifier". */
+  /** Pin to a specific version, e.g. `"2.0.0"`. Falsy means "use @latest". */
   version?: string;
   /** Run the full pipeline without spawning the child process. */
   dryRun?: boolean;
@@ -48,8 +50,9 @@ export interface InstallResult {
  * Build the specifier to pass to `opencode plugin`.
  *
  * Rules:
- *   - Empty / unset version  → bare `opencode-rules-md` (lets OpenCode refresh).
- *   - Any other value        → `opencode-rules-md@<version>` (pins the install).
+ *   - Empty / unset / "latest" → `opencode-rules-md@latest` (default, matches
+ *     the native command users type directly).
+ *   - Any other value          → `opencode-rules-md@<version>` (pins the install).
  */
 export function buildSpecifier(version: string | undefined): string {
   const trimmed = version?.trim() ?? '';

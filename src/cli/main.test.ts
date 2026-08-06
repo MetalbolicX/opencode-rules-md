@@ -179,8 +179,8 @@ describe('runMain (bare omd defaults to install)', () => {
     const exitCode = await runMain(opts, []);
     expect(exitCode).toBe(0);
     expect(fake.calls).toHaveLength(1);
-    // bare omd installs with the bare specifier (lets OpenCode refresh)
-    expect(fake.calls[0]!.args).toEqual(['opencode-rules-md', '--global']);
+    // bare omd installs with @latest (matches the native command)
+    expect(fake.calls[0]!.args).toEqual(['opencode-rules-md@latest', '--global']);
   });
 
   it('bare omd prints a success message', async () => {
@@ -461,7 +461,7 @@ describe('runMain command routing', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('runInstall', () => {
-  it('spawns opencode plugin <specifier> --global with the bare specifier', async () => {
+  it('spawns opencode plugin <specifier> --global with the @latest specifier', async () => {
     const fake = makeFakeSpawn();
     const fs = makeFakeFs({}, []);
     const fakeEnv = makeFakeEnv();
@@ -469,9 +469,9 @@ describe('runInstall', () => {
     const result = await runInstall({ spawn: fake.spawn }, fs, fakeEnv);
 
     expect(result.status).toBe('wrote');
-    expect(result.specifier).toBe('opencode-rules-md');
+    expect(result.specifier).toBe('opencode-rules-md@latest');
     expect(fake.calls).toHaveLength(1);
-    expect(fake.calls[0]!.args).toEqual(['opencode-rules-md', '--global']);
+    expect(fake.calls[0]!.args).toEqual(['opencode-rules-md@latest', '--global']);
   });
 
   it('--version pins the specifier', async () => {
@@ -494,7 +494,7 @@ describe('runInstall', () => {
     const result = await runInstall({ dryRun: true }, fs, fakeEnv);
 
     expect(result.status).toBe('skipped');
-    expect(result.specifier).toBe('opencode-rules-md');
+    expect(result.specifier).toBe('opencode-rules-md@latest');
     expect(fake.calls).toHaveLength(0);
   });
 
